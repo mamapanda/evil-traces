@@ -299,6 +299,18 @@ ARG is the ex argument to :global."
 (evil-ex-define-argument-type evil-traces-global
   :runner evil-traces-hl-global)
 
+;; ** Changing Faces
+(defun evil-traces-use-diff-faces ()
+  "Use `diff-mode' faces for evil-traces."
+  (require 'diff-mode)
+  (custom-set-faces
+   '(evil-traces-change-face       ((t (:inherit diff-removed))))
+   '(evil-traces-delete-face       ((t (:inherit diff-removed))))
+   '(evil-traces-normal-face       ((t (:inherit diff-changed))))
+   '(evil-traces-yank-face         ((t (:inherit diff-changed))))
+   '(evil-traces-global-match-face ((t (:inherit diff-added))))
+   '(evil-traces-global-range-face ((t (:inherit diff-changed))))))
+
 ;; * Minor Mode
 ;; TODO: implement the types
 (defcustom evil-traces-argument-type-alist
