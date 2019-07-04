@@ -108,6 +108,23 @@ If the overlay doesn't exist, then create it with PROPS first."
       (push (pop ranges) combined-ranges)) ; only one range is left
     (nreverse combined-ranges)))
 
+(cl-defmacro evil-traces--do-visible-lines (beg end &body body)
+  "Execute BODY on each visible line between BEG and END in the current buffer.
+Point will be at the beginning of the line each time BODY is run."
+  (declare (indent defun))
+  (let ((win-range-name (gensym "win-range"))
+        (subrange-beg-name (gensym "subrange-beg"))
+        (subrange-end-name (gensym "subrange-end")))
+    `(save-excursion
+       (dolist (,win-range-name (evil-traces--window-ranges (current-buffer)))
+         (let ((,subrange-beg-name (max ,beg (car ,win-range-name)))
+               (,subrange-end-name (min ,end (cdr ,win-range-name))))
+           (goto-char ,subrange-beg-name)
+           (while (< (point) ,subrange-end-name)
+             (save-excursion
+               ,@body)
+             (forward-line)))))))
+
 ;; ** Simple
 (cl-defmacro evil-traces--define-simple (arg-type
                                          &optional
@@ -253,10 +270,12 @@ If there are multiple matches in a line, only the first is considered."
 (defvar evil-traces--last-global-match-count 0
   "The number of matches found by the last :global update.")
 
-(defun evil-traces--update-global (pattern range)
+;; TODO: minimize range usage
+(defun evil-traces--update-global (pattern &optional range)
   "Highlight RANGE and :global matches for PATTERN in RANGE."
   (with-current-buffer evil-ex-current-buffer
-    (let* ((beg (evil-range-beginning range))
+    (let* ((range (or range (evil-ex-full-range)))
+           (beg (evil-range-beginning range))
            (end (evil-range-end range))
            (params (list range pattern))
            (match-count 0))
@@ -266,15 +285,17 @@ If there are multiple matches in a line, only the first is considered."
          'evil-traces-global-range beg end 'face 'evil-traces-global-range-face)
         (when pattern
           (condition-case nil
-              (dolist (win-range (evil-traces--window-ranges (current-buffer)))
-                (dolist (match-bounds (evil-traces--global-matches
-                                       pattern (max beg (car win-range)) (min end (cdr win-range))))
-                  (evil-traces--make-or-move-overlay (evil-traces--global-match-name match-count)
-                                                     (car match-bounds)
-                                                     (cdr match-bounds)
-                                                     'face
-                                                     'evil-traces-global-match-face)
-                  (cl-incf match-count)))
+              (save-match-data
+                (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case)
+                                            'insensitive)))
+                  (evil-traces--do-visible-lines beg end
+                    (when (re-search-forward pattern (line-end-position) t)
+                      (evil-traces--make-or-move-overlay (evil-traces--global-match-name match-count)
+                                                         (match-beginning 0)
+                                                         (match-end 0)
+                                                         'face
+                                                         'evil-traces-global-match-face)
+                      (cl-incf match-count)))))
             (invalid-regexp nil))) ; trailing backslash
         (evil-traces--delete-global-match-overlays match-count evil-traces--last-global-match-count)
         (setq evil-traces--last-global-params params
@@ -289,15 +310,12 @@ ARG is the ex argument to :global."
      (setq evil-traces--last-global-params nil
            evil-traces--last-global-match-count 0))
     (update
-     (let ((range (or evil-ex-range
-                      (with-current-buffer evil-ex-current-buffer
-                        (evil-ex-full-range))))
-           ;; if ARG is nil or "/", leave pattern as nil instead of the last pattern
-           (pattern (and (> (length arg) 1)
+     ;; if ARG is nil or "/", leave pattern as nil instead of the last pattern
+     (let ((pattern (and (> (length arg) 1)
                          (condition-case nil
                              (cl-first (evil-ex-parse-global arg))
                            (user-error nil))))) ; no previous pattern
-       (evil-traces--run-timer #'evil-traces--update-global pattern range)))
+       (evil-traces--run-timer #'evil-traces--update-global pattern evil-ex-range)))
     (stop
      (evil-traces--cancel-timer)
      (evil-traces--delete-overlay 'evil-traces-global-range)
