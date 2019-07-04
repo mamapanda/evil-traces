@@ -181,6 +181,34 @@ ARG-TYPE commands take if an explicit range is not provided."
   :face-name evil-traces-default-face
   :default-range buffer)
 
+(evil-traces--define-simple evil-traces-change
+  "Argument type for change commands."
+  :runner-name evil-traces--hl-change
+  :face-name evil-traces-change-face
+  :define-face t
+  :default-range line)
+
+(evil-traces--define-simple evil-traces-delete
+  "Argument type for delete commands."
+  :runner-name evil-traces--hl-delete
+  :face-name evil-traces-delete-face
+  :define-face t
+  :default-range line)
+
+(evil-traces--define-simple evil-traces-normal
+  "Argument type for :normal commands."
+  :runner-name evil-traces--hl-normal
+  :face-name evil-traces-normal-face
+  :define-face t
+  :default-range line)
+
+(evil-traces--define-simple evil-traces-yank
+  "Argument type for yank commands."
+  :runner-name evil-traces--hl-yank
+  :face-name evil-traces-yank-face
+  :define-face t
+  :default-range line)
+
 ;; ** Global
 (defface evil-traces-global-range-face '((t :inherit evil-traces-default-face))
   "The face for :global's range.")
@@ -281,12 +309,12 @@ ARG is the ex argument to :global."
     (evil-ex-global-inverted . evil-traces-global)
     (evil-ex-join . evil-traces-default-line)
     (evil-ex-sort . evil-traces-default-buffer)
-    (evil-change . evil-traces-default-line)
+    (evil-change . evil-traces-change)
     (evil-copy . evil-traces-default-line)
     (evil-move . evil-traces-default-line)
-    (evil-ex-yank . evil-traces-default-line)
-    (evil-ex-delete . evil-traces-default-line)
-    (evil-ex-normal . evil-traces-default-line))
+    (evil-ex-yank . evil-traces-yank)
+    (evil-ex-delete . evil-traces-delete)
+    (evil-ex-normal . evil-traces-normal))
   "An alist mapping `evil-ex' functions to their argument types."
   :type '(alist :key function :value symbol))
 
