@@ -57,8 +57,9 @@ If the timer is currently running, then it is canceled first."
 
 (defun evil-traces--cancel-timer ()
   "Cancel evil-traces' timer if it is currently running."
-  (cancel-timer evil-traces--timer)
-  (setq evil-traces--timer nil))
+  (when evil-traces--timer
+    (cancel-timer evil-traces--timer)
+    (setq evil-traces--timer nil)))
 
 ;; * Overlay Management
 (defvar evil-traces--overlays (make-hash-table)
@@ -202,6 +203,12 @@ ARG-TYPE commands take if an explicit range is not provided."
   :define-face t
   :default-range line)
 
+(evil-traces--define-simple evil-traces-shell-command
+  "Argument type for shell commands."
+  :runner-name evil-traces--hl-shell-command
+  :face-name evil-traces-shell-command-face
+  :define-face t)
+
 (evil-traces--define-simple evil-traces-yank
   "Argument type for yank commands."
   :runner-name evil-traces--hl-yank
@@ -304,12 +311,13 @@ ARG is the ex argument to :global."
   "Use `diff-mode' faces for evil-traces."
   (require 'diff-mode)
   (custom-set-faces
-   '(evil-traces-change-face       ((t (:inherit diff-removed))))
-   '(evil-traces-delete-face       ((t (:inherit diff-removed))))
-   '(evil-traces-normal-face       ((t (:inherit diff-changed))))
-   '(evil-traces-yank-face         ((t (:inherit diff-changed))))
-   '(evil-traces-global-match-face ((t (:inherit diff-added))))
-   '(evil-traces-global-range-face ((t (:inherit diff-changed))))))
+   '(evil-traces-change-face        ((t (:inherit diff-removed))))
+   '(evil-traces-delete-face        ((t (:inherit diff-removed))))
+   '(evil-traces-global-match-face  ((t (:inherit diff-added))))
+   '(evil-traces-global-range-face  ((t (:inherit diff-changed))))
+   '(evil-traces-normal-face        ((t (:inherit diff-changed))))
+   '(evil-traces-shell-command-face ((t (:inherit diff-changed))))
+   '(evil-traces-yank-face          ((t (:inherit diff-changed))))))
 
 ;; * Minor Mode
 ;; TODO: implement the types
@@ -326,7 +334,8 @@ ARG is the ex argument to :global."
     (evil-move . evil-traces-default-line)
     (evil-ex-yank . evil-traces-yank)
     (evil-ex-delete . evil-traces-delete)
-    (evil-ex-normal . evil-traces-normal))
+    (evil-ex-normal . evil-traces-normal)
+    (evil-shell-command . evil-traces-shell-command))
   "An alist mapping `evil-ex' functions to their argument types."
   :type '(alist :key function :value symbol))
 
