@@ -62,28 +62,33 @@ If the timer is currently running, then it is canceled first."
     (setq evil-traces--timer nil)))
 
 ;; * Overlay Management
-(defvar evil-traces--overlays (make-hash-table)
-  "A table of overlays where the keys are overlay names.")
+(defvar evil-traces--highlights (make-hash-table)
+  "A table where the keys are names and values are lists of overlays.")
 
-(defun evil-traces--make-or-move-overlay (name beg end &rest props)
-  "Set the range of the overlay named NAME to be from BEG to END.
-If the overlay doesn't exist, then create it with PROPS first."
-  (let ((ov (gethash name evil-traces--overlays)))
-    (if ov
-        (move-overlay ov beg end)
-      (setq ov (make-overlay beg end evil-ex-current-buffer))
-      (while props
-        (let ((prop (pop props))
-              (value (pop props)))
-          (overlay-put ov prop value)))
-      (puthash name ov evil-traces--overlays))
-    ov))
+(defun evil-traces--set-hl (name ranges &rest props)
+  "Highlight RANGES with PROPS, using the name NAME for the highlights.
 
-(defun evil-traces--delete-overlay (name)
-  "Delete the overlay named NAME."
-  (when-let ((ov (gethash name evil-traces--overlays)))
-    (delete-overlay ov)
-    (remhash name evil-traces--overlays)))
+RANGES may be a list of (beg . end) pairs or just one pair, if there
+is only one range to highlight.
+
+PROPS is an overlay property list."
+  (let ((ranges (if (numberp (cl-first ranges)) (list ranges) ranges))
+        (overlays (gethash name evil-traces--highlights))
+        new-overlays)
+    (dolist (range ranges)
+      (let ((ov (or (pop overlays) (make-overlay 0 0 evil-ex-current-buffer)))
+            (props props))
+        (move-overlay ov (car range) (cdr range))
+        (while props
+          (overlay-put ov (pop props) (pop props)))
+        (push ov new-overlays)))
+    (mapc #'delete-overlay overlays)
+    (puthash name new-overlays evil-traces--highlights)))
+
+(defun evil-traces--delete-hl (name)
+  "Delete the highlight named NAME."
+  (mapc #'delete-overlay (gethash name evil-traces--highlights))
+  (remhash name evil-traces--highlights))
 
 ;; * Visual Previews
 ;; ** General Options
@@ -169,15 +174,15 @@ ARG-TYPE commands take if an explicit range is not provided."
            (cl-case flag
              (start nil)
              (update
-              (evil-traces--run-timer #'evil-traces--make-or-move-overlay
+              (evil-traces--run-timer #'evil-traces--set-hl
                                       ',arg-type
-                                      (evil-range-beginning evil-ex-range)
-                                      (evil-range-end evil-ex-range)
+                                      (cons (evil-range-beginning evil-ex-range)
+                                            (evil-range-end evil-ex-range))
                                       'face
                                       ',face-name))
              (stop
               (evil-traces--cancel-timer)
-              (evil-traces--delete-overlay ',arg-type))))))
+              (evil-traces--delete-hl ',arg-type))))))
      (evil-ex-define-argument-type ,arg-type
        ,doc ; DOC isn't even used by `evil-ex-define-argument-type'
        :runner ,runner-name)))
@@ -240,66 +245,31 @@ ARG-TYPE commands take if an explicit range is not provided."
 (defface evil-traces-global-match-face '((t :inherit evil-traces-default-face))
   "The face for matched :global terms.")
 
-(defun evil-traces--global-match-name (number)
-  "Return a match identifier based on NUMBER."
-  (intern (format "evil-traces-global-match-%s" number)))
-
-(defun evil-traces--global-matches (pattern &optional beg end)
-  "Find :global matches for PATTERN between BEG and END.
-If there are multiple matches in a line, only the first is considered."
-  (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case) 'insensitive))
-        (beg (or beg (point-min)))
-        (end (or end (point-max))))
-    (save-excursion
-      (save-match-data
-        (goto-char beg)
-        (cl-loop while (< (point) end)
-                 when (re-search-forward pattern (line-end-position) t)
-                 collect (cons (match-beginning 0) (match-end 0))
-                 do (forward-line))))))
-
-(defun evil-traces--delete-global-match-overlays (start end)
-  "Delete :global match overlays for matches numbered from START to END, exclusive."
-  (cl-loop for i from start below end
-           for ov-name = (evil-traces--global-match-name i)
-           do (evil-traces--delete-overlay ov-name)))
-
 (defvar evil-traces--last-global-params nil
   "The last parameters passed to :global.")
 
-(defvar evil-traces--last-global-match-count 0
-  "The number of matches found by the last :global update.")
-
-;; TODO: minimize range usage
 (defun evil-traces--update-global (pattern &optional range)
   "Highlight RANGE and :global matches for PATTERN in RANGE."
   (with-current-buffer evil-ex-current-buffer
     (let* ((range (or range (evil-ex-full-range)))
            (beg (evil-range-beginning range))
            (end (evil-range-end range))
-           (params (list range pattern))
-           (match-count 0))
+           (params (list pattern range))
+           matches)
       ;; don't have to update if the call is the exact same
       (unless (equal evil-traces--last-global-params params)
-        (evil-traces--make-or-move-overlay
-         'evil-traces-global-range beg end 'face 'evil-traces-global-range-face)
+        (evil-traces--set-hl
+         'evil-traces-global-range (cons beg end) 'face 'evil-traces-global-range-face)
         (when pattern
-          (condition-case nil
-              (save-match-data
-                (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case)
-                                            'insensitive)))
-                  (evil-traces--do-visible-lines beg end
-                    (when (re-search-forward pattern (line-end-position) t)
-                      (evil-traces--make-or-move-overlay (evil-traces--global-match-name match-count)
-                                                         (match-beginning 0)
-                                                         (match-end 0)
-                                                         'face
-                                                         'evil-traces-global-match-face)
-                      (cl-incf match-count)))))
-            (invalid-regexp nil))) ; trailing backslash
-        (evil-traces--delete-global-match-overlays match-count evil-traces--last-global-match-count)
-        (setq evil-traces--last-global-params params
-              evil-traces--last-global-match-count match-count)))))
+          (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case)
+                                      'insensitive)))
+            (save-match-data
+              (evil-traces--do-visible-lines beg end
+                (when (re-search-forward pattern (line-end-position) t)
+                  (push (cons (match-beginning 0) (match-end 0)) matches))))))
+        (evil-traces--set-hl
+         'evil-traces-global-matches matches 'face 'evil-traces-global-match-face)
+        (setq evil-traces--last-global-params params)))))
 
 (defun evil-traces-hl-global (flag &optional arg)
   "Highlight :global's range and matches.
@@ -307,22 +277,55 @@ FLAG is one of 'start, 'update, or 'stop and signals what to do.
 ARG is the ex argument to :global."
   (cl-case flag
     (start
-     (setq evil-traces--last-global-params nil
-           evil-traces--last-global-match-count 0))
+     (setq evil-traces--last-global-params nil))
     (update
-     ;; if ARG is nil or "/", leave pattern as nil instead of the last pattern
-     (let ((pattern (and (> (length arg) 1)
-                         (condition-case nil
-                             (cl-first (evil-ex-parse-global arg))
-                           (user-error nil))))) ; no previous pattern
+     (let (pattern)
+       (condition-case error-info
+           ;; if ARG is nil or "/", leave pattern as nil instead of the last pattern
+           (when (> (length arg) 1)
+             (setq pattern (cl-first (evil-ex-parse-global arg)))
+             (string-match-p pattern "")) ; test if the pattern is valid
+         (user-error
+          (evil-ex-echo (cl-second error-info)))
+         (invalid-regexp
+          (evil-ex-echo (cl-second error-info))
+          (setq pattern nil)))
        (evil-traces--run-timer #'evil-traces--update-global pattern evil-ex-range)))
     (stop
      (evil-traces--cancel-timer)
-     (evil-traces--delete-overlay 'evil-traces-global-range)
-     (evil-traces--delete-global-match-overlays 0 evil-traces--last-global-match-count))))
+     (evil-traces--delete-hl 'evil-traces-global-range)
+     (evil-traces--delete-hl 'evil-traces-global-matches))))
 
 (evil-ex-define-argument-type evil-traces-global
   :runner evil-traces-hl-global)
+
+;; ** Join
+;; (defface evil-traces-join-range-face '((t (:inherit evil-traces-default-face)))
+;;   "The face for :join's range.")
+
+;; (defface evil-traces-join-indicator-face nil
+;;   "The face for :join's indicator.")
+
+;; (defcustom evil-traces-join-indicator " <="
+;;   "The indicator for :join."
+;;   :type 'string)
+
+;; ;; TODO: we could have an `evil-traces--do-visible-lines' macro
+;; ;;       to execute code on each visible line in a range
+;; (defun evil-traces--update-join (range &optional count)
+;;   "Highlight RANGE and add indicators for :join lines.
+;; COUNT is the number argument to :join."
+;;   (with-current-buffer evil-ex-current-buffer
+;;     (let* ((range (or range (evil-ex-range (evil-ex-current-line))))
+;;            (beg (evil-range-beginning range))
+;;            (end (evil-range-end range)))
+;;       (evil-traces--make-or-move-overlay
+;;        'evil-traces-join-range beg end 'face 'evil-traces-join-range-face)
+;;       (when evil-traces-join-indicator
+;;         ;; TODO what the fuck is this
+;;         (if count
+;;             (let ((join-beg ()))))
+;;         ))))
 
 ;; ** Changing Faces
 (defun evil-traces-use-diff-faces ()
