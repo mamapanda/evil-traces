@@ -1,0 +1,6 @@
+#+TITLE: Evil Traces
+#+AUTHOR: Daniel Phan
+
+Work in progress. If you really want to test it out, turn on the minor
+mode with ~M-x evil-traces-mode~. See the variable
+~evil-traces-argument-type-alist~ for currently supported ex commands.

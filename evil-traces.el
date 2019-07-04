@@ -40,7 +40,7 @@
   :group 'evil)
 
 ;; * Timer
-(defcustom evil-traces-idle-delay 0.1
+(defcustom evil-traces-idle-delay 0.05
   "The idle delay, in seconds, before evil-traces should update."
   :type 'float)
 
@@ -84,43 +84,12 @@ If the overlay doesn't exist, then create it with PROPS first."
     (delete-overlay ov)
     (remhash name evil-traces--overlays)))
 
-;; * Runners
+;; * Visual Previews
+;; ** General Options
+(defface evil-traces-default-face '((t (:inherit region)))
+  "The default face for evil-traces overlays.")
+
 ;; ** Helper Functions
-(defun evil-traces--simple-hl (name flag range face)
-  "Perform an operation on the overlay named NAME.
-If FLAG is 'update, then move the overlay to RANGE, creating it with
-FACE if it does not exist. If it is 'stop, then delete the overlay."
-  (with-current-buffer evil-ex-current-buffer
-    (cl-case flag
-      (start nil)
-      (update (evil-traces--run-timer #'evil-traces--make-or-move-overlay
-                                      name
-                                      (evil-range-beginning range)
-                                      (evil-range-end range)
-                                      'face face))
-      (stop (evil-traces--cancel-timer)
-            (evil-traces--delete-overlay name)))))
-
-(defun evil-traces--simple-hl-range (name flag range face)
-  "A helper function for commands that don't have a default range.
-NAME, FLAG, RANGE, and FACE are the same as `evil-traces--simple-hl'."
-  (evil-traces--simple-hl name (if range flag 'stop) range face))
-
-(defun evil-traces--simple-hl-range-or-line (name flag range face)
-  "A helper function for commands whose default range is the current line.
-NAME, FLAG, RANGE, and FACE are the same as `evil-traces--simple-hl'."
-  (with-current-buffer evil-ex-current-buffer
-    (evil-traces--simple-hl name
-                            flag
-                            (or range (evil-ex-range (evil-ex-current-line)))
-                            face)))
-
-(defun evil-traces--simple-hl-range-or-buffer (name flag range face)
-  "A helper function for commands whose default range is the whole buffer.
-NAME, FLAG, RANGE, and FACE are the same as `evil-traces--simple-hl'."
-  (with-current-buffer evil-ex-current-buffer
-    (evil-traces--simple-hl name flag (or range (evil-ex-full-range)) face)))
-
 (defun evil-traces--window-ranges (buffer)
   "Calculate the ranges covered by BUFFER's active windows."
   (let ((ranges (cl-loop for window in (get-buffer-window-list buffer nil t)
@@ -138,42 +107,79 @@ NAME, FLAG, RANGE, and FACE are the same as `evil-traces--simple-hl'."
       (push (pop ranges) combined-ranges)) ; only one range is left
     (nreverse combined-ranges)))
 
-;; ** Default
-(defface evil-traces-default-face '((t (:inherit region)))
-  "The default face for evil-traces overlays.")
+;; ** Simple
+(cl-defmacro evil-traces--define-simple (arg-type
+                                         &optional
+                                         doc
+                                         &key
+                                         runner-name
+                                         face-name
+                                         define-face
+                                         default-range)
+  "Define an ex argument type of ARG-TYPE.
 
-(defun evil-traces-hl-range (flag &optional _arg)
-  "Highlight `evil-ex-range' if it is non-nil.
-FLAG is as described in `evil-ex-define-argument-type'."
-  (evil-traces--simple-hl-range 'evil-traces-default
-                                flag
-                                evil-ex-range
-                                'evil-traces-default-face))
+DOC is a docstring describing ARG-TYPE.
 
-(evil-ex-define-argument-type evil-traces-default
-  :runner evil-traces-hl-range)
+RUNNER-NAME is the name of the runner function for ARG-TYPE. It will
+be called by evil to provide visual feedback for an ex command of type
+ARG-TYPE.
 
-(defun evil-traces-hl-range-or-line (flag &optional _arg)
-  "Highlight `evil-ex-range' if it is non-nil, or the current line otherwise.
-FLAG is as described in `evil-ex-define-argument-type'."
-  (evil-traces--simple-hl-range-or-line 'evil-traces-default-line
-                                        flag
-                                        evil-ex-range
-                                        'evil-traces-default-face))
+FACE-NAME defines the face to highlight with. If DEFINE-FACE is
+non-nil, define FACE-NAME with a default value of inheriting from
+`evil-traces-default-face'.
 
-(evil-ex-define-argument-type evil-traces-default-line
-  :runner evil-traces-hl-range-or-line)
+DEFAULT-RANGE is one of line, buffer, or nil and describes the range
+ARG-TYPE commands take if an explicit range is not provided."
+  (declare (indent defun) (doc-string 2))
+  (cl-assert (symbolp arg-type))
+  (cl-assert (symbolp runner-name))
+  (cl-assert (symbolp face-name))
+  (cl-assert (memq default-range '(line buffer nil)))
+  `(progn
+     ,(when define-face
+        `(defface ,face-name '((t (:inherit evil-traces-default-face)))
+           ,(format "Face for the %s ex argument type." arg-type)))
+     (defun ,runner-name (flag &optional _arg)
+       ,(format "Highlight the range of an ex command with type %s." arg-type)
+       (with-current-buffer evil-ex-current-buffer
+         (let ,(cl-case default-range
+                 (line '((evil-ex-range
+                          (or evil-ex-range (evil-ex-range (evil-ex-current-line))))))
+                 (buffer '((evil-ex-range
+                            (or evil-ex-range (evil-ex-full-range)))))
+                 ((nil) '((flag (if evil-ex-range flag 'stop)))))
+           (cl-case flag
+             (start nil)
+             (update
+              (evil-traces--run-timer #'evil-traces--make-or-move-overlay
+                                      ',arg-type
+                                      (evil-range-beginning evil-ex-range)
+                                      (evil-range-end evil-ex-range)
+                                      'face
+                                      ',face-name))
+             (stop
+              (evil-traces--cancel-timer)
+              (evil-traces--delete-overlay ',arg-type))))))
+     (evil-ex-define-argument-type ,arg-type
+       ,doc ; DOC isn't even used by `evil-ex-define-argument-type'
+       :runner ,runner-name)))
 
-(defun evil-traces-hl-range-or-buffer (flag &optional _arg)
-  "Highlight `evil-ex-range' if it is non-nil, or the current buffer otherwise.
-FLAG is as described in `evil-ex-define-argument-type'."
-  (evil-traces--simple-hl-range-or-buffer 'evil-traces-default-buffer
-                                          flag
-                                          evil-ex-range
-                                          'evil-traces-default-face))
+(evil-traces--define-simple evil-traces-default
+  "Default argument type for commands that only perform on explicit ranges."
+  :runner-name evil-traces--hl-range
+  :face-name evil-traces-default-face)
 
-(evil-ex-define-argument-type evil-traces-default-buffer
-  :runner evil-traces-hl-range-or-buffer)
+(evil-traces--define-simple evil-traces-default-line
+  "Default argument type for commands that default the range to the current line."
+  :runner-name evil-traces--hl-range-or-line
+  :face-name evil-traces-default-face
+  :default-range line)
+
+(evil-traces--define-simple evil-traces-default-buffer
+  "Default argument type for commands that default the range to the whole buffer."
+  :runner-name evil-traces--hl-range-or-buffer
+  :face-name evil-traces-default-face
+  :default-range buffer)
 
 ;; ** Global
 (defface evil-traces-global-range-face '((t :inherit evil-traces-default-face))
