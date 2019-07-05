@@ -248,28 +248,36 @@ ARG-TYPE commands take if an explicit range is not provided."
 (defvar evil-traces--last-global-params nil
   "The last parameters passed to :global.")
 
-(defun evil-traces--update-global (pattern &optional range)
-  "Highlight RANGE and :global matches for PATTERN in RANGE."
+(defun evil-traces--update-global (range arg)
+  "Highlight RANGE and :global matches for ARG's pattern in RANGE."
   (with-current-buffer evil-ex-current-buffer
-    (let* ((range (or range (evil-ex-full-range)))
-           (beg (evil-range-beginning range))
-           (end (evil-range-end range))
-           (params (list pattern range))
-           matches)
-      ;; don't have to update if the call is the exact same
-      (unless (equal evil-traces--last-global-params params)
-        (evil-traces--set-hl
-         'evil-traces-global-range (cons beg end) 'face 'evil-traces-global-range-face)
-        (when pattern
-          (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case)
-                                      'insensitive)))
-            (save-match-data
-              (evil-traces--do-visible-lines beg end
-                (when (re-search-forward pattern (line-end-position) t)
-                  (push (cons (match-beginning 0) (match-end 0)) matches))))))
-        (evil-traces--set-hl
-         'evil-traces-global-matches matches 'face 'evil-traces-global-match-face)
-        (setq evil-traces--last-global-params params)))))
+    (condition-case error-info
+        (let* ((range (or range (evil-ex-full-range)))
+               (beg (evil-range-beginning range))
+               (end (evil-range-end range))
+               ;; don't use last pattern if ARG is nil or "/"
+               (pattern (and (> (length arg) 1)
+                             (cl-first (evil-ex-parse-global arg))))
+               (params (list pattern range))
+               matches)
+          ;; don't have to update if the call is the exact same
+          (unless (equal evil-traces--last-global-params params)
+            (evil-traces--set-hl
+             'evil-traces-global-range (cons beg end) 'face 'evil-traces-global-range-face)
+            (when pattern
+              (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case)
+                                          'insensitive)))
+                (save-match-data
+                  (evil-traces--do-visible-lines beg end
+                    (when (re-search-forward pattern (line-end-position) t)
+                      (push (cons (match-beginning 0) (match-end 0)) matches))))))
+            (evil-traces--set-hl
+             'evil-traces-global-matches matches 'face 'evil-traces-global-match-face)
+            (setq evil-traces--last-global-params params)))
+      (user-error
+       (evil-ex-echo (cl-second error-info)))
+      (invalid-regexp
+       (evil-ex-echo (cl-second error-info))))))
 
 (defun evil-traces-hl-global (flag &optional arg)
   "Highlight :global's range and matches.
@@ -279,18 +287,7 @@ ARG is the ex argument to :global."
     (start
      (setq evil-traces--last-global-params nil))
     (update
-     (let (pattern)
-       (condition-case error-info
-           ;; if ARG is nil or "/", leave pattern as nil instead of the last pattern
-           (when (> (length arg) 1)
-             (setq pattern (cl-first (evil-ex-parse-global arg)))
-             (string-match-p pattern "")) ; test if the pattern is valid
-         (user-error
-          (evil-ex-echo (cl-second error-info)))
-         (invalid-regexp
-          (evil-ex-echo (cl-second error-info))
-          (setq pattern nil)))
-       (evil-traces--run-timer #'evil-traces--update-global pattern evil-ex-range)))
+     (evil-traces--run-timer #'evil-traces--update-global evil-ex-range arg))
     (stop
      (evil-traces--cancel-timer)
      (evil-traces--delete-hl 'evil-traces-global-range)
