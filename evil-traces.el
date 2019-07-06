@@ -297,45 +297,87 @@ ARG is the ex argument to :global."
   :runner evil-traces-hl-global)
 
 ;; ** Join
-;; (defface evil-traces-join-range-face '((t (:inherit evil-traces-default-face)))
-;;   "The face for :join's range.")
+(defface evil-traces-join-range-face '((t (:inherit evil-traces-default-face)))
+  "The face for :join's range.")
 
-;; (defface evil-traces-join-indicator-face nil
-;;   "The face for :join's indicator.")
+(defface evil-traces-join-indicator-face nil
+  "The face for :join's indicator.")
 
-;; (defcustom evil-traces-join-indicator " <="
-;;   "The indicator for :join."
-;;   :type 'string)
+(defcustom evil-traces-join-indicator "  <<<"
+  "The indicator for :join."
+  :type 'string)
 
-;; ;; TODO: we could have an `evil-traces--do-visible-lines' macro
-;; ;;       to execute code on each visible line in a range
-;; (defun evil-traces--update-join (range &optional count)
-;;   "Highlight RANGE and add indicators for :join lines.
-;; COUNT is the number argument to :join."
-;;   (with-current-buffer evil-ex-current-buffer
-;;     (let* ((range (or range (evil-ex-range (evil-ex-current-line))))
-;;            (beg (evil-range-beginning range))
-;;            (end (evil-range-end range)))
-;;       (evil-traces--make-or-move-overlay
-;;        'evil-traces-join-range beg end 'face 'evil-traces-join-range-face)
-;;       (when evil-traces-join-indicator
-;;         ;; TODO what the fuck is this
-;;         (if count
-;;             (let ((join-beg ()))))
-;;         ))))
+(defun evil-traces--update-join-indicators (beg end)
+  "Place the :join line indicators in the range from BEG to END."
+  (let (indicator-positions)
+    (evil-traces--do-visible-lines beg end
+      (push (cons (line-end-position) (line-end-position)) indicator-positions))
+    (let ((visual-end (save-excursion
+                        (goto-char (cdr (cl-first indicator-positions)))
+                        (line-beginning-position 2))))
+      (when (and (> (length indicator-positions) 1) (= visual-end end)) ; ignore the last :join line
+        (pop indicator-positions)))
+    (evil-traces--set-hl 'evil-traces-join-indicators
+                         indicator-positions
+                         'after-string
+                         (propertize evil-traces-join-indicator
+                                     'face
+                                     'evil-traces-join-indicator-face))))
+
+(defun evil-traces--update-join (range arg)
+  "Highlight RANGE and add indicators for :join lines.
+COUNT is the number argument to :join."
+  (with-current-buffer evil-ex-current-buffer
+    (let* ((range (or range (evil-ex-range (evil-ex-current-line))))
+           (beg (evil-range-beginning range))
+           (end (evil-range-end range)))
+      (evil-traces--set-hl
+       'evil-traces-join-range (cons beg end) 'face 'evil-traces-join-range-face)
+      (cond
+       ((not arg)
+        (evil-traces--update-join-indicators beg end))
+       ((string-match-p "^[1-9][0-9]*$" arg)
+        (let ((join-beg (save-excursion
+                          (goto-char end)
+                          (point-at-bol 0)))
+              (join-end (save-excursion
+                          (goto-char end)
+                          (point-at-bol (string-to-number arg)))))
+          (evil-traces--update-join-indicators join-beg join-end)))
+       (t
+        (evil-ex-echo "Invalid count"))))))
+
+(defun evil-traces-hl-join (flag &optional arg)
+  "Highlight the range covered by a :join command.
+FLAG indicates whether to update or stop highlights, and ARG is a
+string representing the count argument to :join."
+  (cl-case flag
+    (start nil)
+    (update
+     (evil-traces--run-timer #'evil-traces--update-join evil-ex-range arg))
+    (stop
+     (evil-traces--cancel-timer)
+     (evil-traces--delete-hl 'evil-traces-join-range)
+     (evil-traces--delete-hl 'evil-traces-join-indicators))))
+
+(evil-ex-define-argument-type evil-traces-join
+  :runner evil-traces-hl-join)
 
 ;; ** Changing Faces
 (defun evil-traces-use-diff-faces ()
   "Use `diff-mode' faces for evil-traces."
+  ;; TODO: explore more faces. might be better to have more variety
   (require 'diff-mode)
   (custom-set-faces
-   '(evil-traces-change-face        ((t (:inherit diff-removed))))
-   '(evil-traces-delete-face        ((t (:inherit diff-removed))))
-   '(evil-traces-global-match-face  ((t (:inherit diff-added))))
-   '(evil-traces-global-range-face  ((t (:inherit diff-changed))))
-   '(evil-traces-normal-face        ((t (:inherit diff-changed))))
-   '(evil-traces-shell-command-face ((t (:inherit diff-changed))))
-   '(evil-traces-yank-face          ((t (:inherit diff-changed))))))
+   '(evil-traces-change-face         ((t (:inherit diff-removed))))
+   '(evil-traces-delete-face         ((t (:inherit diff-removed))))
+   '(evil-traces-global-match-face   ((t (:inherit diff-added))))
+   '(evil-traces-global-range-face   ((t (:inherit diff-changed))))
+   '(evil-traces-join-indicator-face ((t (:inherit diff-added))))
+   '(evil-traces-join-range-face     ((t (:inherit diff-changed))))
+   '(evil-traces-normal-face         ((t (:inherit diff-changed))))
+   '(evil-traces-shell-command-face  ((t (:inherit diff-changed))))
+   '(evil-traces-yank-face           ((t (:inherit diff-changed))))))
 
 ;; * Minor Mode
 ;; TODO: implement the types
@@ -345,7 +387,7 @@ ARG is the ex argument to :global."
   '(
     (evil-ex-global . evil-traces-global)
     (evil-ex-global-inverted . evil-traces-global)
-    (evil-ex-join . evil-traces-default-line)
+    (evil-ex-join . evil-traces-join)
     (evil-ex-sort . evil-traces-default-buffer)
     (evil-change . evil-traces-change)
     (evil-copy . evil-traces-default-line)
