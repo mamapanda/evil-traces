@@ -113,22 +113,18 @@ PROPS is an overlay property list."
       (push (pop ranges) combined-ranges)) ; only one range is left
     (nreverse combined-ranges)))
 
-(cl-defmacro evil-traces--do-visible-lines (beg end &body body)
-  "Execute BODY on each visible line between BEG and END in the current buffer.
-Point will be at the beginning of the line each time BODY is run."
-  (declare (indent defun))
-  (let ((win-range-name (gensym "win-range"))
-        (subrange-beg-name (gensym "subrange-beg"))
-        (subrange-end-name (gensym "subrange-end")))
-    `(save-excursion
-       (dolist (,win-range-name (evil-traces--window-ranges (current-buffer)))
-         (let ((,subrange-beg-name (max ,beg (car ,win-range-name)))
-               (,subrange-end-name (min ,end (cdr ,win-range-name))))
-           (goto-char ,subrange-beg-name)
-           (while (< (point) ,subrange-end-name)
-             (save-excursion
-               ,@body)
-             (forward-line)))))))
+(defun evil-traces--points-at-visible-bol (beg end)
+  "Find the positions of the beginnings of each line between BEG and END."
+  (let (positions)
+    (dolist (win-range (evil-traces--window-ranges (current-buffer)))
+      (let ((subrange-beg (max beg (car win-range)))
+            (subrange-end (min end (cdr win-range))))
+        (save-excursion
+          (goto-char subrange-beg)
+          (while (< (point) subrange-end)
+            (push (point) positions)
+            (forward-line)))))
+    (nreverse positions)))
 
 ;; ** Simple
 (cl-defmacro evil-traces--define-simple (arg-type
@@ -267,10 +263,12 @@ ARG-TYPE commands take if an explicit range is not provided."
             (when pattern
               (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case)
                                           'insensitive)))
-                (save-match-data
-                  (evil-traces--do-visible-lines beg end
-                    (when (re-search-forward pattern (line-end-position) t)
-                      (push (cons (match-beginning 0) (match-end 0)) matches))))))
+                (dolist (pos (evil-traces--points-at-visible-bol beg end))
+                  (save-excursion
+                    (save-match-data
+                      (goto-char pos)
+                      (when (re-search-forward pattern (point-at-eol) t)
+                        (push (cons (match-beginning 0) (match-end 0)) matches)))))))
             (evil-traces--set-hl
              'evil-traces-global-matches matches 'face 'evil-traces-global-match-face)
             (setq evil-traces--last-global-params params)))
@@ -308,17 +306,19 @@ ARG is the ex argument to :global."
   :type 'string)
 
 (defun evil-traces--update-join-indicators (beg end)
-  "Place the :join line indicators in the range from BEG to END."
-  (let (indicator-positions)
-    (evil-traces--do-visible-lines beg end
-      (push (cons (line-end-position) (line-end-position)) indicator-positions))
-    (let ((visual-end (save-excursion
-                        (goto-char (cdr (cl-first indicator-positions)))
-                        (line-beginning-position 2))))
-      (when (and (> (length indicator-positions) 1) (= visual-end end)) ; ignore the last :join line
-        (pop indicator-positions)))
+  "Place :join line indicators in the range from BEG to END."
+  (let* ((indicator-positions (cl-loop for pos in (evil-traces--points-at-visible-bol beg end)
+                                       collect (save-excursion
+                                                 (goto-char pos)
+                                                 (point-at-eol))))
+         (visual-end (save-excursion
+                       (goto-char (cl-first (last indicator-positions)))
+                       (point-at-bol 2))))
+    (when (and (> (length indicator-positions) 1) (= visual-end end)) ; ignore the last :join line
+      (setq indicator-positions (butlast indicator-positions)))
     (evil-traces--set-hl 'evil-traces-join-indicators
-                         indicator-positions
+                         (cl-loop for pos in indicator-positions
+                                  collect (cons pos pos))
                          'after-string
                          (propertize evil-traces-join-indicator
                                      'face
@@ -326,7 +326,7 @@ ARG is the ex argument to :global."
 
 (defun evil-traces--update-join (range arg)
   "Highlight RANGE and add indicators for :join lines.
-COUNT is the number argument to :join."
+ARG is :join's ex argument."
   (with-current-buffer evil-ex-current-buffer
     (let* ((range (or range (evil-ex-range (evil-ex-current-line))))
            (beg (evil-range-beginning range))
