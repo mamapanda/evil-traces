@@ -409,6 +409,45 @@ FLAG indicates whether to update or stop highlights, and ARG is
 (evil-ex-define-argument-type evil-traces-sort
   :runner evil-traces-hl-sort)
 
+;; ** Substitute
+(defface evil-traces-substitute-range-face '((t (:inherit evil-traces-default-face)))
+  "The face for :substitute's range.")
+
+(defun evil-traces--evil-substitute-runner (flag &optional arg)
+  "Call evil's :substitute runner with FLAG and ARG."
+  (when-let ((runner (evil-ex-argument-handler-runner
+                      (alist-get 'substitution evil-ex-argument-types))))
+    (funcall runner flag arg)))
+
+(defun evil-traces--update-substitute (range arg)
+  "Preview :substitute according to RANGE and ARG."
+  (with-current-buffer evil-ex-current-buffer
+    (let ((range (or range (evil-ex-range (evil-ex-current-line)))))
+      (evil-traces--set-hl 'evil-traces-substitute-range
+                           (cons (evil-range-beginning range)
+                                 (evil-range-end range))
+                           'face
+                           'evil-traces-substitute-range-face))
+    (let ((evil-ex-hl-update-delay 0))
+      (evil-traces--evil-substitute-runner 'update arg))))
+
+(defun evil-traces-hl-substitute (flag &optional arg)
+  "Preview the :substitute command.
+FLAG indicates whether to start, update, or stop previews, and ARG is
+:substitute's ex argument."
+  (cl-case flag
+    (start
+     (evil-traces--evil-substitute-runner 'start arg))
+    (update
+     (evil-traces--update-substitute evil-ex-range arg))
+    (stop
+     (evil-traces--cancel-timer)
+     (evil-traces--evil-substitute-runner 'stop arg)
+     (evil-traces--delete-hl 'evil-traces-substitute-range))))
+
+(evil-ex-define-argument-type evil-traces-substitute
+  :runner evil-traces-hl-substitute)
+
 ;; ** Changing Faces
 (defun evil-traces-use-diff-faces ()
   "Use `diff-mode' faces for evil-traces."
@@ -431,6 +470,7 @@ FLAG indicates whether to update or stop highlights, and ARG is
   ;; TODO: sort these in alphabetical order?
   ;; TODO: change, copy, sort, join, yank, delete, and normal can have special runners
   '(
+    (evil-ex-substitute . evil-traces-substitute)
     (evil-ex-global . evil-traces-global)
     (evil-ex-global-inverted . evil-traces-global)
     (evil-ex-join . evil-traces-join)
