@@ -168,7 +168,6 @@ ARG-TYPE commands take if an explicit range is not provided."
                             (or evil-ex-range (evil-ex-full-range)))))
                  ((nil) '((flag (if evil-ex-range flag 'stop)))))
            (cl-case flag
-             (start nil)
              (update
               (evil-traces--run-timer #'evil-traces--set-hl
                                       ',arg-type
@@ -352,7 +351,6 @@ ARG is :join's ex argument."
 FLAG indicates whether to update or stop highlights, and ARG is a
 string representing the count argument to :join."
   (cl-case flag
-    (start nil)
     (update
      (evil-traces--run-timer #'evil-traces--update-join evil-ex-range arg))
     (stop
