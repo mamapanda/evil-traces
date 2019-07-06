@@ -363,6 +363,54 @@ string representing the count argument to :join."
 (evil-ex-define-argument-type evil-traces-join
   :runner evil-traces-hl-join)
 
+;; ** Sort
+(defface evil-traces-sort-face '((t (:inherit evil-traces-default-face)))
+  "The face for :sort.")
+
+(defun evil-traces--sort-option-p (option)
+  "Check if OPTION is a valid :sort option."
+  (memq option '(?i ?u)))
+
+(defun evil-traces--update-sort (range bang arg)
+  "Preview :sort over RANGE if RANGE is non-nil.
+ARG is :sort's ex argument."
+  (with-current-buffer evil-ex-current-buffer
+    (cond
+     ((and arg (cl-notevery #'evil-traces--sort-option-p (string-to-list arg)))
+      (evil-ex-echo "Invalid option"))
+     ((not range)
+      (evil-traces--delete-hl 'evil-traces-sort))
+     (t
+      (let* ((beg (evil-range-beginning range))
+             (end (evil-range-end range))
+             (lines (buffer-substring beg end))
+             (sorted-lines (with-temp-buffer
+                             (insert lines)
+                             ;; hide "Reordering buffer... Done"
+                             (let ((inhibit-message t))
+                               (evil-ex-sort (point-min) (point-max) arg bang))
+                             (buffer-string))))
+        (evil-traces--set-hl 'evil-traces-sort
+                             (cons beg end)
+                             'face
+                             'evil-traces-sort-face
+                             'display
+                             sorted-lines))))))
+
+(defun evil-traces-hl-sort (flag &optional arg)
+  "Preview the results of :sort.
+FLAG indicates whether to update or stop highlights, and ARG is
+:sort's ex argument."
+  (cl-case flag
+    (update
+     (evil-traces--run-timer #'evil-traces--update-sort evil-ex-range evil-ex-bang arg))
+    (stop
+     (evil-traces--cancel-timer)
+     (evil-traces--delete-hl 'evil-traces-sort))))
+
+(evil-ex-define-argument-type evil-traces-sort
+  :runner evil-traces-hl-sort)
+
 ;; ** Changing Faces
 (defun evil-traces-use-diff-faces ()
   "Use `diff-mode' faces for evil-traces."
@@ -388,7 +436,7 @@ string representing the count argument to :join."
     (evil-ex-global . evil-traces-global)
     (evil-ex-global-inverted . evil-traces-global)
     (evil-ex-join . evil-traces-join)
-    (evil-ex-sort . evil-traces-default-buffer)
+    (evil-ex-sort . evil-traces-sort)
     (evil-change . evil-traces-change)
     (evil-copy . evil-traces-default-line)
     (evil-move . evil-traces-default-line)
