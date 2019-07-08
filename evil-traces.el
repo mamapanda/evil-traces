@@ -234,10 +234,18 @@ ARG-TYPE commands take if an explicit range is not provided."
   :default-range line)
 
 ;; ** Movers
-;; TODO: clean up, see how much needs to be a macro (if anything) and
-;; how much can be separate functions
-;;     - the moved text generation could be a separate function?
-;;       - pass in beg end face
+(defun evil-traces--get-move-text (beg end insert-pos)
+  "Obtain the text between BEG and END, adding newlines as necessary.
+INSERT-POS is where the text will be inserted."
+  (let ((text (buffer-substring beg end)))
+    (unless (string-suffix-p "\n" text)
+      (setq text (concat text "\n")))
+    (save-excursion
+      (goto-char insert-pos)
+      (when (and (eolp) (not (bolp)))
+        (setq text (concat "\n" text))))
+    text))
+
 (cl-defmacro evil-traces--define-mover (arg-type
                                         &optional
                                         doc
@@ -294,15 +302,12 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
                  (let* ((address (eval (cl-second parsed-arg)))
                         (insert-pos (save-excursion
                                       (goto-char (point-min))
-                                      (point-at-eol address)))
-                        (move-text (buffer-substring beg end)))
+                                      (point-at-bol (1+ address))))
+                        (move-text (evil-traces--get-move-text beg end insert-pos)))
                    (evil-traces--set-hl ',preview-hl-name
                                         (cons insert-pos insert-pos)
-                                        'after-string
-                                        (concat "\n"
-                                                (propertize (string-remove-suffix "\n" move-text)
-                                                            'face
-                                                            ',preview-face-name))))
+                                        'before-string
+                                        (propertize move-text 'face ',preview-face-name)))
                (evil-ex-echo "Invalid address")))))
        (defun ,runner-name (flag &optional arg)
          (cl-case flag
