@@ -233,6 +233,110 @@ ARG-TYPE commands take if an explicit range is not provided."
   :define-face t
   :default-range line)
 
+;; ** Movers
+;; TODO: clean up, see how much needs to be a macro (if anything) and
+;; how much can be separate functions
+;;     - the moved text generation could be a separate function?
+;;       - pass in beg end face
+(cl-defmacro evil-traces--define-mover (arg-type
+                                        &optional
+                                        doc
+                                        &key
+                                        runner-name
+                                        updater-name
+                                        range-face-name
+                                        preview-face-name
+                                        define-faces)
+  "Define an ex argument type of ARG-TYPE with behavior similar to :move.
+
+DOC is a docstring describing ARG-TYPE.
+
+RUNNER-NAME is the name to use for ARG-TYPE's runner function. The function
+will be used by evil to provide ARG-TYPE's visual previews.
+
+UPDATER-NAME is the name to use for the function that actually updates
+the visual previews.
+
+RANGE-FACE-NAME will be used to highlight the ex command's range.
+
+PREVIEW-FACE-NAME will be used for the moved text's preview.
+
+DEFINE-FACES, if non-nil, means to define both RANGE-FACE-NAME and
+PREVIEW-FACE-NAME with default values of inheriting from
+`evil-traces-default-face'."
+  (declare (indent defun) (doc-string 2))
+  (cl-assert (symbolp arg-type))
+  (cl-assert (symbolp runner-name))
+  (cl-assert (symbolp updater-name))
+  (cl-assert (symbolp range-face-name))
+  (cl-assert (symbolp preview-face-name))
+  ;; I don't think variable names need to be `gensym'ed because none
+  ;; of the macro parameters are variable names.
+  (let ((range-hl-name (intern (format "%s-range" arg-type)))
+        (preview-hl-name (intern (format "%s-preview" arg-type))))
+    `(progn
+       ,(when define-faces
+          `(progn
+             (defface ,range-face-name '((t (:inherit evil-traces-default-face)))
+               ,(format "Face for the range of an ex command of type %s." arg-type))
+             (defface ,preview-face-name '((t (:inherit evil-traces-default-face)))
+               ,(format "Face for the preview text of an ex command of type %s." arg-type))))
+       (defun ,updater-name (range arg)
+         ,(format "Preview the results of an ex command of type %s.
+RANGE is the command's range, and ARG is its ex argument." arg-type)
+         (with-current-buffer evil-ex-current-buffer
+           (let* ((range (or range (evil-ex-range (evil-ex-current-line))))
+                  (beg (evil-range-beginning range))
+                  (end (evil-range-end range))
+                  (parsed-arg (evil-ex-parse arg)))
+             (evil-traces--set-hl ',range-hl-name (cons beg end) 'face ',range-face-name)
+             (if (eq (cl-first parsed-arg) 'evil-goto-line)
+                 (let* ((address (eval (cl-second parsed-arg)))
+                        (insert-pos (save-excursion
+                                      (goto-char (point-min))
+                                      (point-at-eol address)))
+                        (move-text (buffer-substring beg end)))
+                   (evil-traces--set-hl ',preview-hl-name
+                                        (cons insert-pos insert-pos)
+                                        'after-string
+                                        (concat "\n"
+                                                (propertize (string-remove-suffix "\n" move-text)
+                                                            'face
+                                                            ',preview-face-name))))
+               (evil-ex-echo "Invalid address")))))
+       (defun ,runner-name (flag &optional arg)
+         (cl-case flag
+           (update
+            (evil-traces--run-timer #',updater-name evil-ex-range arg))
+           (stop
+            (evil-traces--cancel-timer)
+            (evil-traces--delete-hl ',range-hl-name)
+            (evil-traces--delete-hl ',preview-hl-name))))
+       (evil-ex-define-argument-type ,arg-type
+         ,doc
+         :runner ,runner-name))))
+
+(evil-traces--define-mover evil-traces-move
+  "Argument type for :move commands."
+  :runner-name evil-traces-hl-move
+  :updater-name evil-traces--update-move
+  :range-face-name evil-traces-move-range-face
+  :preview-face-name evil-traces-move-preview-face
+  :define-faces t)
+
+(evil-traces--define-mover evil-traces-copy
+  "Argument type for :copy commands."
+  :runner-name evil-traces-hl-copy
+  :updater-name evil-traces--update-copy
+  :range-face-name evil-traces-copy-range-face
+  :preview-face-name evil-traces-copy-preview-face
+  :define-faces t)
+
+;; FIXME: turns out the type has to be added to the end of the list
+;;        a logical fix might be to traverse `evil-traces-argument-type-alist'
+;;        inside the register function in reverse order
+;; (add-to-list 'evil-traces-argument-type-alist '(evil-move . evil-traces-move) t)
+
 ;; ** Global
 (defface evil-traces-global-range-face '((t :inherit evil-traces-default-face))
   "The face for :global's range.")
@@ -476,8 +580,8 @@ FLAG indicates whether to start, update, or stop previews, and ARG is
     (evil-ex-join . evil-traces-join)
     (evil-ex-sort . evil-traces-sort)
     (evil-change . evil-traces-change)
-    (evil-copy . evil-traces-default-line)
-    (evil-move . evil-traces-default-line)
+    (evil-copy . evil-traces-copy)
+    (evil-move . evil-traces-move)
     (evil-ex-yank . evil-traces-yank)
     (evil-ex-delete . evil-traces-delete)
     (evil-ex-normal . evil-traces-normal)
