@@ -335,7 +335,7 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
 
 (evil-traces--define-mover evil-traces-move
   "Argument type for :move commands."
-  :runner-name evil-traces-hl-move
+  :runner-name evil-traces--hl-move
   :updater-name evil-traces--update-move
   :range-face-name evil-traces-move-range-face
   :preview-face-name evil-traces-move-preview-face
@@ -343,7 +343,7 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
 
 (evil-traces--define-mover evil-traces-copy
   "Argument type for :copy commands."
-  :runner-name evil-traces-hl-copy
+  :runner-name evil-traces--hl-copy
   :updater-name evil-traces--update-copy
   :range-face-name evil-traces-copy-range-face
   :preview-face-name evil-traces-copy-preview-face
@@ -400,7 +400,7 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
       (invalid-regexp
        (evil-ex-echo (cl-second error-info))))))
 
-(defun evil-traces-hl-global (flag &optional arg)
+(defun evil-traces--hl-global (flag &optional arg)
   "Highlight :global's range and matches.
 FLAG is one of 'start, 'update, or 'stop and signals what to do.
 ARG is the ex argument to :global."
@@ -415,7 +415,7 @@ ARG is the ex argument to :global."
      (evil-traces--delete-hl 'evil-traces-global-matches))))
 
 (evil-ex-define-argument-type evil-traces-global
-  :runner evil-traces-hl-global)
+  :runner evil-traces--hl-global)
 
 ;; ** Join
 (defface evil-traces-join-range-face '((t (:inherit evil-traces-default-face)))
@@ -475,7 +475,7 @@ ARG is :join's ex argument."
        (t
         (evil-ex-echo "Invalid count"))))))
 
-(defun evil-traces-hl-join (flag &optional arg)
+(defun evil-traces--hl-join (flag &optional arg)
   "Highlight the range covered by a :join command.
 FLAG indicates whether to update or stop highlights, and ARG is a
 string representing the count argument to :join."
@@ -488,7 +488,7 @@ string representing the count argument to :join."
      (evil-traces--delete-hl 'evil-traces-join-indicators))))
 
 (evil-ex-define-argument-type evil-traces-join
-  :runner evil-traces-hl-join)
+  :runner evil-traces--hl-join)
 
 ;; ** Sort
 (defface evil-traces-sort-face '((t (:inherit evil-traces-default-face)))
@@ -521,7 +521,7 @@ ARG is :sort's ex argument."
                              (cons beg end)
                              (list 'face 'evil-traces-sort-face 'display sorted-lines)))))))
 
-(defun evil-traces-hl-sort (flag &optional arg)
+(defun evil-traces--hl-sort (flag &optional arg)
   "Preview the results of :sort.
 FLAG indicates whether to update or stop highlights, and ARG is
 :sort's ex argument."
@@ -537,7 +537,7 @@ FLAG indicates whether to update or stop highlights, and ARG is
      (evil-traces--delete-hl 'evil-traces-sort))))
 
 (evil-ex-define-argument-type evil-traces-sort
-  :runner evil-traces-hl-sort)
+  :runner evil-traces--hl-sort)
 
 ;; ** Substitute
 (defface evil-traces-substitute-range-face '((t (:inherit evil-traces-default-face)))
@@ -560,7 +560,7 @@ FLAG indicates whether to update or stop highlights, and ARG is
     (let ((evil-ex-hl-update-delay 0))
       (evil-traces--evil-substitute-runner 'update arg))))
 
-(defun evil-traces-hl-substitute (flag &optional arg)
+(defun evil-traces--hl-substitute (flag &optional arg)
   "Preview the :substitute command.
 FLAG indicates whether to start, update, or stop previews, and ARG is
 :substitute's ex argument."
@@ -575,7 +575,7 @@ FLAG indicates whether to start, update, or stop previews, and ARG is
      (evil-traces--delete-hl 'evil-traces-substitute-range))))
 
 (evil-ex-define-argument-type evil-traces-substitute
-  :runner evil-traces-hl-substitute)
+  :runner evil-traces--hl-substitute)
 
 ;; ** Changing Faces
 (defun evil-traces-use-diff-faces ()
