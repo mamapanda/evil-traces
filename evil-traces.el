@@ -1,9 +1,9 @@
 ;;; evil-traces.el --- Visual hints for `evil-ex' -*- lexical-binding: t -*-
 
 ;; Author: Daniel Phan <daniel.phan36@gmail.com>
-;; Version: 0.1.0
-;; Package-Requires: ((emacs "25.1") (evil "1.0") (cl-lib "0.5"))
-;; Homepage: TODO: homepage
+;; Version: 0.0.1
+;; Package-Requires: ((emacs "25.1") (evil "1.2.13") (cl-lib "0.6"))
+;; Homepage: https://github.com/mamapanda/evil-traces
 ;; Keywords: evil, visual
 
 ;; This file is NOT part of GNU Emacs.
