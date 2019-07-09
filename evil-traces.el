@@ -65,14 +65,11 @@ If the timer is currently running, then it is canceled first."
 (defvar evil-traces--highlights (make-hash-table)
   "A table where the keys are names and values are lists of overlays.")
 
-(defun evil-traces--set-hl (name ranges &rest props)
-  "Highlight RANGES with PROPS, using the name NAME for the highlights.
-
-RANGES may be a list of (beg . end) pairs or just one pair, if there
-is only one range to highlight.
-
-PROPS is an overlay property list."
-  (let ((ranges (if (numberp (cl-first ranges)) (list ranges) ranges))
+(defun evil-traces--set-hl (name range &rest props)
+  "Highlight RANGE with PROPS in `evil-ex-current-buffer'.
+NAME is the name for the highlight. RANGE may be a (beg . end) pair or
+a list of such pairs, and PROPS is an overlay property list."
+  (let ((ranges (if (numberp (cl-first range)) (list range) range))
         (overlays (gethash name evil-traces--highlights))
         new-overlays)
     (dolist (range ranges)
@@ -83,7 +80,8 @@ PROPS is an overlay property list."
           (overlay-put ov (pop props) (pop props)))
         (push ov new-overlays)))
     (mapc #'delete-overlay overlays)
-    (puthash name new-overlays evil-traces--highlights)))
+    (puthash name new-overlays evil-traces--highlights)
+    new-overlays))
 
 (defun evil-traces--delete-hl (name)
   "Delete the highlight named NAME."
@@ -135,7 +133,7 @@ PROPS is an overlay property list."
                                          face-name
                                          define-face
                                          default-range)
-  "Define an ex argument type of ARG-TYPE.
+  "Define ARG-TYPE as a simple ex argument type.
 
 DOC is a docstring describing ARG-TYPE.
 
@@ -158,26 +156,35 @@ ARG-TYPE commands take if an explicit range is not provided."
      ,(when define-face
         `(defface ,face-name '((t (:inherit evil-traces-default-face)))
            ,(format "Face for the %s ex argument type." arg-type)))
+     ;; I don't think we need to `gensym' the parameters because none
+     ;; of the macro arguments are variable names.
      (defun ,runner-name (flag &optional _arg)
        ,(format "Highlight the range of an ex command with type %s." arg-type)
        (with-current-buffer evil-ex-current-buffer
-         (let ,(cl-case default-range
-                 (line '((evil-ex-range
-                          (or evil-ex-range (evil-ex-range (evil-ex-current-line))))))
-                 (buffer '((evil-ex-range
-                            (or evil-ex-range (evil-ex-full-range)))))
-                 ((nil) '((flag (if evil-ex-range flag 'stop)))))
-           (cl-case flag
-             (update
-              (evil-traces--run-timer #'evil-traces--set-hl
-                                      ',arg-type
-                                      (cons (evil-range-beginning evil-ex-range)
-                                            (evil-range-end evil-ex-range))
-                                      'face
-                                      ',face-name))
-             (stop
-              (evil-traces--cancel-timer)
-              (evil-traces--delete-hl ',arg-type))))))
+         (cl-case flag
+           (update
+            (if evil-ex-range
+                (evil-traces--run-timer #'evil-traces--set-hl
+                                        ',arg-type
+                                        (cons (evil-range-beginning evil-ex-range)
+                                              (evil-range-end evil-ex-range))
+                                        'face
+                                        ',face-name)
+              ,(cl-case default-range
+                 (line `(evil-traces--run-timer #'evil-traces--set-hl
+                                                ',arg-type
+                                                (cons (point-at-bol) (point-at-bol 2))
+                                                'face
+                                                ',face-name))
+                 (buffer `(evil-traces--run-timer #'evil-traces--set-hl
+                                                  ',arg-type
+                                                  (cons (point-min) (point-max))
+                                                  'face
+                                                  ',face-name))
+                 ((nil) `(evil-traces--run-timer #'evil-traces--delete-hl ',arg-type)))))
+           (stop
+            (evil-traces--cancel-timer)
+            (evil-traces--delete-hl ',arg-type)))))
      (evil-ex-define-argument-type ,arg-type
        ,doc ; DOC isn't even used by `evil-ex-define-argument-type'
        :runner ,runner-name)))
@@ -200,14 +207,14 @@ ARG-TYPE commands take if an explicit range is not provided."
   :default-range buffer)
 
 (evil-traces--define-simple evil-traces-change
-  "Argument type for change commands."
+  "Argument type for :change commands."
   :runner-name evil-traces--hl-change
   :face-name evil-traces-change-face
   :define-face t
   :default-range line)
 
 (evil-traces--define-simple evil-traces-delete
-  "Argument type for delete commands."
+  "Argument type for :delete commands."
   :runner-name evil-traces--hl-delete
   :face-name evil-traces-delete-face
   :define-face t
@@ -221,21 +228,30 @@ ARG-TYPE commands take if an explicit range is not provided."
   :default-range line)
 
 (evil-traces--define-simple evil-traces-shell-command
-  "Argument type for shell commands."
+  "Argument type for :shell commands."
   :runner-name evil-traces--hl-shell-command
   :face-name evil-traces-shell-command-face
   :define-face t)
 
 (evil-traces--define-simple evil-traces-yank
-  "Argument type for yank commands."
+  "Argument type for :yank commands."
   :runner-name evil-traces--hl-yank
   :face-name evil-traces-yank-face
   :define-face t
   :default-range line)
 
 ;; ** Movers
+(defun evil-traces--parse-move (arg)
+  "Parse ARG into the position where :move will place its text."
+  (let ((parsed-arg (evil-ex-parse arg)))
+    (when (eq (cl-first parsed-arg) 'evil-goto-line)
+      (let* ((address (eval (cl-second parsed-arg))))
+        (save-excursion
+          (goto-char (point-min))
+          (point-at-bol (1+ address)))))))
+
 (defun evil-traces--get-move-text (beg end insert-pos)
-  "Obtain the text between BEG and END, adding newlines as necessary.
+  "Obtain the text between BEG and END, adding newlines as necessary for :move.
 INSERT-POS is where the text will be inserted."
   (let ((text (buffer-substring beg end)))
     (unless (string-suffix-p "\n" text)
@@ -295,15 +311,10 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
          (with-current-buffer evil-ex-current-buffer
            (let* ((range (or range (evil-ex-range (evil-ex-current-line))))
                   (beg (evil-range-beginning range))
-                  (end (evil-range-end range))
-                  (parsed-arg (evil-ex-parse arg)))
+                  (end (evil-range-end range)))
              (evil-traces--set-hl ',range-hl-name (cons beg end) 'face ',range-face-name)
-             (if (eq (cl-first parsed-arg) 'evil-goto-line)
-                 (let* ((address (eval (cl-second parsed-arg)))
-                        (insert-pos (save-excursion
-                                      (goto-char (point-min))
-                                      (point-at-bol (1+ address))))
-                        (move-text (evil-traces--get-move-text beg end insert-pos)))
+             (if-let ((insert-pos (evil-traces--parse-move arg)))
+                 (let ((move-text (evil-traces--get-move-text beg end insert-pos)))
                    (evil-traces--set-hl ',preview-hl-name
                                         (cons insert-pos insert-pos)
                                         'before-string
@@ -352,6 +363,18 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
 (defvar evil-traces--last-global-params nil
   "The last parameters passed to :global.")
 
+(defun evil-traces--global-matches (pattern beg end)
+  "Return the bounds of all matches of PATTERN between BEG and END."
+  (when pattern
+    (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case) 'insensitive)))
+      (save-excursion
+        (save-match-data
+          (cl-loop for pos in (evil-traces--points-at-visible-bol beg end)
+                   when (progn
+                          (goto-char pos)
+                          (re-search-forward pattern (point-at-eol) t))
+                   collect (cons (match-beginning 0) (match-end 0))))))))
+
 (defun evil-traces--update-global (range arg)
   "Highlight RANGE and :global matches for ARG's pattern in RANGE."
   (with-current-buffer evil-ex-current-buffer
@@ -362,23 +385,17 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
                ;; don't use last pattern if ARG is nil or "/"
                (pattern (and (> (length arg) 1)
                              (cl-first (evil-ex-parse-global arg))))
-               (params (list pattern range))
-               matches)
+               (params (list pattern range)))
           ;; don't have to update if the call is the exact same
           (unless (equal evil-traces--last-global-params params)
-            (evil-traces--set-hl
-             'evil-traces-global-range (cons beg end) 'face 'evil-traces-global-range-face)
-            (when pattern
-              (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case)
-                                          'insensitive)))
-                (dolist (pos (evil-traces--points-at-visible-bol beg end))
-                  (save-excursion
-                    (save-match-data
-                      (goto-char pos)
-                      (when (re-search-forward pattern (point-at-eol) t)
-                        (push (cons (match-beginning 0) (match-end 0)) matches)))))))
-            (evil-traces--set-hl
-             'evil-traces-global-matches matches 'face 'evil-traces-global-match-face)
+            (evil-traces--set-hl 'evil-traces-global-range
+                                 (cons beg end)
+                                 'face
+                                 'evil-traces-global-range-face)
+            (evil-traces--set-hl 'evil-traces-global-matches
+                                 (evil-traces--global-matches pattern beg end)
+                                 'face
+                                 'evil-traces-global-match-face)
             (setq evil-traces--last-global-params params)))
       (user-error
        (evil-ex-echo (cl-second error-info)))
@@ -413,24 +430,29 @@ ARG is the ex argument to :global."
   "The indicator for :join."
   :type 'string)
 
+(defun evil-traces--join-indicator-positions (beg end)
+  "Find where to place :join's indicators.
+BEG and END define the range of the lines to join."
+  (let* ((positions (cl-loop for pos in (evil-traces--points-at-visible-bol beg end)
+                             collect (save-excursion
+                                       (goto-char pos)
+                                       (point-at-eol))))
+         (visual-end (save-excursion
+                       (goto-char (cl-first (last positions)))
+                       (point-at-bol 2))))
+    (when (and (> (length positions) 1) (= visual-end end)) ; ignore the last :join line
+      (setq positions (butlast positions)))
+    positions))
+
 (defun evil-traces--update-join-indicators (beg end)
   "Place :join line indicators in the range from BEG to END."
-  (let* ((indicator-positions (cl-loop for pos in (evil-traces--points-at-visible-bol beg end)
-                                       collect (save-excursion
-                                                 (goto-char pos)
-                                                 (point-at-eol))))
-         (visual-end (save-excursion
-                       (goto-char (cl-first (last indicator-positions)))
-                       (point-at-bol 2))))
-    (when (and (> (length indicator-positions) 1) (= visual-end end)) ; ignore the last :join line
-      (setq indicator-positions (butlast indicator-positions)))
-    (evil-traces--set-hl 'evil-traces-join-indicators
-                         (cl-loop for pos in indicator-positions
-                                  collect (cons pos pos))
-                         'after-string
-                         (propertize evil-traces-join-indicator
-                                     'face
-                                     'evil-traces-join-indicator-face))))
+  (evil-traces--set-hl 'evil-traces-join-indicators
+                       (cl-loop for pos in (evil-traces--join-indicator-positions beg end)
+                                collect (cons pos pos))
+                       'after-string
+                       (propertize evil-traces-join-indicator
+                                   'face
+                                   'evil-traces-join-indicator-face)))
 
 (defun evil-traces--update-join (range arg)
   "Highlight RANGE and add indicators for :join lines.
@@ -574,23 +596,19 @@ FLAG indicates whether to start, update, or stop previews, and ARG is
    '(evil-traces-yank-face           ((t (:inherit diff-changed))))))
 
 ;; * Minor Mode
-;; TODO: implement the types
 (defcustom evil-traces-argument-type-alist
-  ;; TODO: sort these in alphabetical order?
-  ;; TODO: change, copy, sort, join, yank, delete, and normal can have special runners
-  '(
-    (evil-ex-substitute . evil-traces-substitute)
-    (evil-ex-global . evil-traces-global)
+  '((evil-change             . evil-traces-change)
+    (evil-copy               . evil-traces-copy)
+    (evil-ex-delete          . evil-traces-delete)
+    (evil-ex-global          . evil-traces-global)
     (evil-ex-global-inverted . evil-traces-global)
-    (evil-ex-join . evil-traces-join)
-    (evil-ex-sort . evil-traces-sort)
-    (evil-change . evil-traces-change)
-    (evil-copy . evil-traces-copy)
-    (evil-move . evil-traces-move)
-    (evil-ex-yank . evil-traces-yank)
-    (evil-ex-delete . evil-traces-delete)
-    (evil-ex-normal . evil-traces-normal)
-    (evil-shell-command . evil-traces-shell-command))
+    (evil-ex-join            . evil-traces-join)
+    (evil-ex-normal          . evil-traces-normal)
+    (evil-ex-sort            . evil-traces-sort)
+    (evil-ex-substitute      . evil-traces-substitute)
+    (evil-ex-yank            . evil-traces-yank)
+    (evil-move               . evil-traces-move)
+    (evil-shell-command      . evil-traces-shell-command))
   "An alist mapping `evil-ex' functions to their argument types."
   :type '(alist :key function :value symbol))
 
