@@ -4,7 +4,7 @@
 ;; Version: 0.0.1
 ;; Package-Requires: ((emacs "25.1") (evil "1.2.13") (cl-lib "0.6"))
 ;; Homepage: https://github.com/mamapanda/evil-traces
-;; Keywords: evil, visual
+;; Keywords: emulations, evil, visual
 
 ;; This file is NOT part of GNU Emacs.
 
@@ -33,6 +33,8 @@
 ;; * Setup
 (require 'cl-lib)
 (require 'evil)
+(eval-when-compile
+  (require 'subr-x))
 
 (defgroup evil-traces nil
   "Visual feedback for `evil-ex' commands."
@@ -91,7 +93,7 @@ a list of such pairs, and PROPS is an overlay property list."
 
 ;; * Visual Previews
 ;; ** General Options
-(defface evil-traces-default-face '((t (:inherit region)))
+(defface evil-traces-default '((t (:inherit region)))
   "The default face for evil-traces overlays.")
 
 ;; ** Helper Functions
@@ -144,7 +146,7 @@ ARG-TYPE.
 
 FACE-NAME defines the face to highlight with. If DEFINE-FACE is
 non-nil, define FACE-NAME with a default value of inheriting from
-`evil-traces-default-face'.
+`evil-traces-default'.
 
 DEFAULT-RANGE is one of line, buffer, or nil and describes the range
 ARG-TYPE commands take if an explicit range is not provided."
@@ -155,7 +157,7 @@ ARG-TYPE commands take if an explicit range is not provided."
   (cl-assert (memq default-range '(line buffer nil)))
   `(progn
      ,(when define-face
-        `(defface ,face-name '((t (:inherit evil-traces-default-face)))
+        `(defface ,face-name '((t (:inherit evil-traces-default)))
            ,(format "Face for the %s ex argument type." arg-type)))
      ;; I don't think we need to `gensym' the parameters because none
      ;; of the macro arguments are variable names.
@@ -190,54 +192,56 @@ ARG-TYPE commands take if an explicit range is not provided."
        ,doc ; DOC isn't even used by `evil-ex-define-argument-type'
        :runner ,runner-name)))
 
+;; TODO: we can probably get rid of these default highlighters, since
+;; they're not used anywhere
 (evil-traces--define-simple evil-traces-default
   "Default argument type for commands that only perform on explicit ranges."
   :runner-name evil-traces--hl-range
-  :face-name evil-traces-default-face)
+  :face-name evil-traces-default)
 
 (evil-traces--define-simple evil-traces-default-line
   "Default argument type for commands that default the range to the current line."
   :runner-name evil-traces--hl-range-or-line
-  :face-name evil-traces-default-face
+  :face-name evil-traces-default
   :default-range line)
 
 (evil-traces--define-simple evil-traces-default-buffer
   "Default argument type for commands that default the range to the whole buffer."
   :runner-name evil-traces--hl-range-or-buffer
-  :face-name evil-traces-default-face
+  :face-name evil-traces-default
   :default-range buffer)
 
 (evil-traces--define-simple evil-traces-change
   "Argument type for :change commands."
   :runner-name evil-traces--hl-change
-  :face-name evil-traces-change-face
+  :face-name evil-traces-change
   :define-face t
   :default-range line)
 
 (evil-traces--define-simple evil-traces-delete
   "Argument type for :delete commands."
   :runner-name evil-traces--hl-delete
-  :face-name evil-traces-delete-face
+  :face-name evil-traces-delete
   :define-face t
   :default-range line)
 
 (evil-traces--define-simple evil-traces-normal
   "Argument type for :normal commands."
   :runner-name evil-traces--hl-normal
-  :face-name evil-traces-normal-face
+  :face-name evil-traces-normal
   :define-face t
   :default-range line)
 
 (evil-traces--define-simple evil-traces-shell-command
   "Argument type for :shell commands."
   :runner-name evil-traces--hl-shell-command
-  :face-name evil-traces-shell-command-face
+  :face-name evil-traces-shell-command
   :define-face t)
 
 (evil-traces--define-simple evil-traces-yank
   "Argument type for :yank commands."
   :runner-name evil-traces--hl-yank
-  :face-name evil-traces-yank-face
+  :face-name evil-traces-yank
   :define-face t
   :default-range line)
 
@@ -302,9 +306,9 @@ PREVIEW-FACE-NAME with default values of inheriting from
     `(progn
        ,(when define-faces
           `(progn
-             (defface ,range-face-name '((t (:inherit evil-traces-default-face)))
+             (defface ,range-face-name '((t (:inherit evil-traces-default)))
                ,(format "Face for the range of an ex command of type %s." arg-type))
-             (defface ,preview-face-name '((t (:inherit evil-traces-default-face)))
+             (defface ,preview-face-name '((t (:inherit evil-traces-default)))
                ,(format "Face for the preview text of an ex command of type %s." arg-type))))
        (defun ,updater-name (range arg buffer)
          ,(format "Preview the results of an ex command of type %s in BUFFER.
@@ -337,23 +341,23 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
   "Argument type for :move commands."
   :runner-name evil-traces--hl-move
   :updater-name evil-traces--update-move
-  :range-face-name evil-traces-move-range-face
-  :preview-face-name evil-traces-move-preview-face
+  :range-face-name evil-traces-move-range
+  :preview-face-name evil-traces-move-preview
   :define-faces t)
 
 (evil-traces--define-mover evil-traces-copy
   "Argument type for :copy commands."
   :runner-name evil-traces--hl-copy
   :updater-name evil-traces--update-copy
-  :range-face-name evil-traces-copy-range-face
-  :preview-face-name evil-traces-copy-preview-face
+  :range-face-name evil-traces-copy-range
+  :preview-face-name evil-traces-copy-preview
   :define-faces t)
 
 ;; ** Global
-(defface evil-traces-global-range-face '((t :inherit evil-traces-default-face))
+(defface evil-traces-global-range '((t :inherit evil-traces-default))
   "The face for :global's range.")
 
-(defface evil-traces-global-match-face '((t :inherit evil-traces-default-face))
+(defface evil-traces-global-match '((t :inherit isearch))
   "The face for matched :global terms.")
 
 (defvar evil-traces--last-global-params nil
@@ -387,10 +391,10 @@ buffer to highlight in."
           (unless (equal evil-traces--last-global-params params)
             (evil-traces--set-hl 'evil-traces-global-range
                                  (cons beg end)
-                                 '(face evil-traces-global-range-face))
+                                 '(face evil-traces-global-range))
             (evil-traces--set-hl 'evil-traces-global-matches
                                  (evil-traces--global-matches pattern beg end)
-                                 '(face evil-traces-global-match-face))
+                                 '(face evil-traces-global-match))
             (setq evil-traces--last-global-params params)))
       (user-error
        (evil-ex-echo (cl-second error-info)))
@@ -415,10 +419,10 @@ ARG is the ex argument to :global."
   :runner evil-traces--hl-global)
 
 ;; ** Join
-(defface evil-traces-join-range-face '((t (:inherit evil-traces-default-face)))
+(defface evil-traces-join-range '((t (:inherit evil-traces-default)))
   "The face for :join's range.")
 
-(defface evil-traces-join-indicator-face nil
+(defface evil-traces-join-indicator nil
   "The face for :join's indicator.")
 
 (defcustom evil-traces-join-indicator "  <<<"
@@ -447,7 +451,7 @@ BEG and END define the range of the lines to join."
                        (list 'after-string
                              (propertize evil-traces-join-indicator
                                          'face
-                                         'evil-traces-join-indicator-face))))
+                                         'evil-traces-join-indicator))))
 
 (defun evil-traces--update-join (range arg buffer)
   "Highlight RANGE and add indicators for :join lines in BUFFER.
@@ -457,7 +461,7 @@ ARG is :join's ex argument."
            (beg (evil-range-beginning range))
            (end (evil-range-end range)))
       (evil-traces--set-hl
-       'evil-traces-join-range (cons beg end) '(face evil-traces-join-range-face))
+       'evil-traces-join-range (cons beg end) '(face evil-traces-join-range))
       (cond
        ((not arg)
         (evil-traces--update-join-indicators beg end))
@@ -488,7 +492,7 @@ string representing the count argument to :join."
   :runner evil-traces--hl-join)
 
 ;; ** Sort
-(defface evil-traces-sort-face '((t (:inherit evil-traces-default-face)))
+(defface evil-traces-sort '((t (:inherit evil-traces-default)))
   "The face for :sort.")
 
 (defun evil-traces--sort-option-p (option)
@@ -516,7 +520,7 @@ BANG is :sort's ex bang, and ARG is :sort's ex argument."
                              (buffer-string))))
         (evil-traces--set-hl 'evil-traces-sort
                              (cons beg end)
-                             (list 'face 'evil-traces-sort-face 'display sorted-lines)))))))
+                             (list 'face 'evil-traces-sort 'display sorted-lines)))))))
 
 (defun evil-traces--hl-sort (flag &optional arg)
   "Preview the results of :sort.
@@ -537,7 +541,7 @@ FLAG indicates whether to update or stop highlights, and ARG is
   :runner evil-traces--hl-sort)
 
 ;; ** Substitute
-(defface evil-traces-substitute-range-face '((t (:inherit evil-traces-default-face)))
+(defface evil-traces-substitute-range '((t (:inherit evil-traces-default)))
   "The face for :substitute's range.")
 
 (defun evil-traces--evil-substitute-runner (flag &optional arg)
@@ -553,7 +557,7 @@ FLAG indicates whether to update or stop highlights, and ARG is
       (evil-traces--set-hl 'evil-traces-substitute-range
                            (cons (evil-range-beginning range)
                                  (evil-range-end range))
-                           '(face evil-traces-substitute-range-face)))
+                           '(face evil-traces-substitute-range)))
     (let ((evil-ex-hl-update-delay 0))
       (evil-traces--evil-substitute-runner 'update arg))))
 
@@ -578,17 +582,18 @@ FLAG indicates whether to start, update, or stop previews, and ARG is
 (defun evil-traces-use-diff-faces ()
   "Use `diff-mode' faces for evil-traces."
   ;; TODO: explore more faces. might be better to have more variety
+  ;; TODO: copy/move faces
   (require 'diff-mode)
   (custom-set-faces
-   '(evil-traces-change-face         ((t (:inherit diff-removed))))
-   '(evil-traces-delete-face         ((t (:inherit diff-removed))))
-   '(evil-traces-global-match-face   ((t (:inherit diff-added))))
-   '(evil-traces-global-range-face   ((t (:inherit diff-changed))))
-   '(evil-traces-join-indicator-face ((t (:inherit diff-added))))
-   '(evil-traces-join-range-face     ((t (:inherit diff-changed))))
-   '(evil-traces-normal-face         ((t (:inherit diff-changed))))
-   '(evil-traces-shell-command-face  ((t (:inherit diff-changed))))
-   '(evil-traces-yank-face           ((t (:inherit diff-changed))))))
+   '(evil-traces-change         ((t (:inherit diff-removed))))
+   '(evil-traces-delete         ((t (:inherit diff-removed))))
+   '(evil-traces-global-match   ((t (:inherit diff-added))))
+   '(evil-traces-global-range   ((t (:inherit diff-changed))))
+   '(evil-traces-join-indicator ((t (:inherit diff-added))))
+   '(evil-traces-join-range     ((t (:inherit diff-changed))))
+   '(evil-traces-normal         ((t (:inherit diff-changed))))
+   '(evil-traces-shell-command  ((t (:inherit diff-changed))))
+   '(evil-traces-yank           ((t (:inherit diff-changed))))))
 
 ;; * Minor Mode
 (defcustom evil-traces-argument-type-alist
