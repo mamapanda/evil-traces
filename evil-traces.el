@@ -67,7 +67,7 @@ If the timer is currently running, then it is canceled first."
 
 (defun evil-traces--set-hl (name range &optional props buffer)
   "Highlight RANGE with PROPS in BUFFER.
-NAME is the name for the highlight. RANGE may be a (beg . end) pair or
+NAME is the name for the highlight.  RANGE may be a (beg . end) pair or
 a list of such pairs, and PROPS is an overlay property list."
   (let ((ranges (if (numberp (cl-first range)) (list range) range))
         (buffer (or buffer (current-buffer)))
@@ -365,7 +365,7 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
   "The last parameters passed to :global.")
 
 (defun evil-traces--global-matches (pattern beg end)
-  "Return the bounds of all matches of PATTERN between BEG and END."
+  "Return the bounds of each match of PATTERN between BEG and END."
   (when pattern
     (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case) 'insensitive)))
       (save-excursion
@@ -377,7 +377,9 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
                    collect (cons (match-beginning 0) (match-end 0))))))))
 
 (defun evil-traces--update-global (range arg buffer)
-  "Highlight RANGE and :global matches for ARG's pattern in RANGE within BUFFER."
+  "Highlight :global's range and every visible match of its pattern.
+RANGE is :global's ex range, ARG is its ex argument, and BUFFER is the
+buffer to highlight in."
   (with-current-buffer buffer
     (condition-case error-info
         (let* ((range (or range (evil-ex-full-range)))
@@ -401,7 +403,7 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
        (evil-ex-echo (cl-second error-info))))))
 
 (defun evil-traces--hl-global (flag &optional arg)
-  "Highlight :global's range and matches.
+  "Highlight :global's range and every visible match of its pattern.
 FLAG is one of 'start, 'update, or 'stop and signals what to do.
 ARG is the ex argument to :global."
   (cl-case flag
@@ -500,7 +502,7 @@ string representing the count argument to :join."
 
 (defun evil-traces--update-sort (range bang arg buffer)
   "Preview :sort over RANGE in BUFFER if RANGE is non-nil.
-ARG is :sort's ex argument."
+BANG is :sort's ex bang, and ARG is :sort's ex argument."
   (with-current-buffer buffer
     (cond
      ((and arg (cl-notevery #'evil-traces--sort-option-p (string-to-list arg)))
