@@ -349,11 +349,6 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
   :preview-face-name evil-traces-copy-preview-face
   :define-faces t)
 
-;; FIXME: turns out the type has to be added to the end of the list
-;;        a logical fix might be to traverse `evil-traces-argument-type-alist'
-;;        inside the register function in reverse order
-;; (add-to-list 'evil-traces-argument-type-alist '(evil-move . evil-traces-move) t)
-
 ;; ** Global
 (defface evil-traces-global-range-face '((t :inherit evil-traces-default-face))
   "The face for :global's range.")
@@ -623,7 +618,9 @@ evil-traces is turned off.")
 
 (defun evil-traces--register-argument-types ()
   "Register evil-traces' argument types with `evil-ex'."
-  (dolist (type-desc evil-traces-argument-type-alist)
+  ;; `add-to-list' adds elements to the front of the list by default.
+  ;; We iterate in reverse order so those first elements take precedence.
+  (dolist (type-desc (reverse evil-traces-argument-type-alist))
     (cl-destructuring-bind (fn . type) type-desc
       (when-let ((old-type (evil-get-command-property fn :ex-arg)))
         (add-to-list 'evil-traces--old-argument-types-alist (cons fn old-type)))
