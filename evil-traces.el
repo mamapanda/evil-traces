@@ -166,25 +166,18 @@ ARG-TYPE commands take if an explicit range is not provided."
        (cl-case flag
          (update
           (with-current-buffer evil-ex-current-buffer
-            (if evil-ex-range
-                (evil-traces--run-timer #'evil-traces--set-hl
-                                        ',arg-type
-                                        (cons (evil-range-beginning evil-ex-range)
-                                              (evil-range-end evil-ex-range))
-                                        '(face ,face-name)
-                                        (current-buffer))
-              ,(cl-case default-range
-                 (line `(evil-traces--run-timer #'evil-traces--set-hl
-                                                ',arg-type
-                                                (cons (point-at-bol) (point-at-bol 2))
-                                                '(face ,face-name)
-                                                (current-buffer)))
-                 (buffer `(evil-traces--run-timer #'evil-traces--set-hl
-                                                  ',arg-type
-                                                  (cons (point-min) (point-max))
-                                                  '(face ,face-name)
-                                                  (current-buffer)))
-                 ((nil) `(evil-traces--run-timer #'evil-traces--delete-hl ',arg-type))))))
+            (let ((range (if evil-ex-range
+                             (cons (evil-range-beginning evil-ex-range)
+                                   (evil-range-end evil-ex-range))
+                           ,(cl-case default-range
+                              ;; nil range clears the highlights
+                              (line '(cons (point-at-bol) (point-at-bol 2)))
+                              (buffer '(cons (point-min) (point-max)))))))
+              (evil-traces--run-timer #'evil-traces--set-hl
+                                      ',arg-type
+                                      range
+                                      '(face ,face-name)
+                                      (current-buffer)))))
          (stop
           (evil-traces--cancel-timer)
           (evil-traces--delete-hl ',arg-type))))
