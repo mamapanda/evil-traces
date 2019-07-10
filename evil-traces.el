@@ -67,16 +67,15 @@ If the timer is currently running, then it is canceled first."
 (defvar evil-traces--highlights (make-hash-table)
   "A table where the keys are names and values are lists of overlays.")
 
-(defun evil-traces--set-hl (name range &optional props buffer)
-  "Highlight RANGE with PROPS in BUFFER.
+(defun evil-traces--set-hl (name range &rest props)
+  "Highlight RANGE with PROPS in the current buffer.
 NAME is the name for the highlight.  RANGE may be a (beg . end) pair or
 a list of such pairs, and PROPS is an overlay property list."
   (let ((ranges (if (numberp (cl-first range)) (list range) range))
-        (buffer (or buffer (current-buffer)))
         (overlays (gethash name evil-traces--highlights))
         new-overlays)
     (dolist (range ranges)
-      (let ((ov (or (pop overlays) (make-overlay 0 0 buffer)))
+      (let ((ov (or (pop overlays) (make-overlay 0 0)))
             (props props))
         (move-overlay ov (car range) (cdr range))
         (while props
@@ -172,12 +171,12 @@ ARG-TYPE commands take if an explicit range is not provided."
                            ,(cl-case default-range
                               ;; nil range clears the highlights
                               (line '(cons (point-at-bol) (point-at-bol 2)))
-                              (buffer '(cons (point-min) (point-max)))))))
-              (evil-traces--run-timer #'evil-traces--set-hl
-                                      ',arg-type
-                                      range
-                                      '(face ,face-name)
-                                      (current-buffer)))))
+                              (buffer '(cons (point-min) (point-max))))))
+                  (buffer (current-buffer)))
+              (evil-traces--run-timer
+               (lambda ()
+                 (with-current-buffer buffer
+                   (evil-traces--set-hl ',arg-type range 'face ',face-name)))))))
          (stop
           (evil-traces--cancel-timer)
           (evil-traces--delete-hl ',arg-type))))
@@ -310,13 +309,13 @@ RANGE is the command's range, and ARG is its ex argument." arg-type)
            (let* ((range (or range (evil-ex-range (evil-ex-current-line))))
                   (beg (evil-range-beginning range))
                   (end (evil-range-end range)))
-             (evil-traces--set-hl ',range-hl-name (cons beg end) '(face ,range-face-name))
+             (evil-traces--set-hl ',range-hl-name (cons beg end) 'face ',range-face-name)
              (if-let ((insert-pos (evil-traces--parse-move arg)))
                  (let ((move-text (evil-traces--get-move-text beg end insert-pos)))
                    (evil-traces--set-hl ',preview-hl-name
                                         (cons insert-pos insert-pos)
-                                        (list 'before-string
-                                              (propertize move-text 'face ',preview-face-name))))
+                                        'before-string
+                                        (propertize move-text 'face ',preview-face-name)))
                (evil-ex-echo "Invalid address")))))
        (defun ,runner-name (flag &optional arg)
          (cl-case flag
@@ -384,10 +383,12 @@ buffer to highlight in."
           (unless (equal evil-traces--last-global-params params)
             (evil-traces--set-hl 'evil-traces-global-range
                                  (cons beg end)
-                                 '(face evil-traces-global-range))
+                                 'face
+                                 'evil-traces-global-range)
             (evil-traces--set-hl 'evil-traces-global-matches
                                  (evil-traces--global-matches pattern beg end)
-                                 '(face evil-traces-global-match))
+                                 'face
+                                 'evil-traces-global-match)
             (setq evil-traces--last-global-params params)))
       (user-error
        (evil-ex-echo (cl-second error-info)))
@@ -441,10 +442,10 @@ BEG and END define the range of the lines to join."
   (evil-traces--set-hl 'evil-traces-join-indicators
                        (cl-loop for pos in (evil-traces--join-indicator-positions beg end)
                                 collect (cons pos pos))
-                       (list 'after-string
-                             (propertize evil-traces-join-indicator
-                                         'face
-                                         'evil-traces-join-indicator))))
+                       'after-string
+                       (propertize evil-traces-join-indicator
+                                   'face
+                                   'evil-traces-join-indicator)))
 
 (defun evil-traces--update-join (range arg buffer)
   "Highlight RANGE and add indicators for :join lines in BUFFER.
@@ -454,7 +455,7 @@ ARG is :join's ex argument."
            (beg (evil-range-beginning range))
            (end (evil-range-end range)))
       (evil-traces--set-hl
-       'evil-traces-join-range (cons beg end) '(face evil-traces-join-range))
+       'evil-traces-join-range (cons beg end) 'face 'evil-traces-join-range)
       (cond
        ((not arg)
         (evil-traces--update-join-indicators beg end))
@@ -513,7 +514,10 @@ BANG is :sort's ex bang, and ARG is :sort's ex argument."
                              (buffer-string))))
         (evil-traces--set-hl 'evil-traces-sort
                              (cons beg end)
-                             (list 'face 'evil-traces-sort 'display sorted-lines)))))))
+                             'face
+                             'evil-traces-sort
+                             'display
+                             sorted-lines))))))
 
 (defun evil-traces--hl-sort (flag &optional arg)
   "Preview the results of :sort.
@@ -550,7 +554,8 @@ FLAG indicates whether to update or stop highlights, and ARG is
       (evil-traces--set-hl 'evil-traces-substitute-range
                            (cons (evil-range-beginning range)
                                  (evil-range-end range))
-                           '(face evil-traces-substitute-range)))
+                           'face
+                           'evil-traces-substitute-range))
     (let ((evil-ex-hl-update-delay 0))
       (evil-traces--evil-substitute-runner 'update arg))))
 
