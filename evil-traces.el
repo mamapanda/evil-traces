@@ -501,7 +501,7 @@ BANG is :sort's ex bang, and ARG is :sort's ex argument."
      ((and arg (cl-notevery #'evil-traces--sort-option-p (string-to-list arg)))
       (evil-ex-echo "Invalid option"))
      ((not range)
-      (evil-traces--delete-hl 'evil-traces-sort))
+      (evil-traces--set-hl 'evil-traces-sort nil))
      (t
       (let* ((beg (evil-range-beginning range))
              (end (evil-range-end range))
