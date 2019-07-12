@@ -398,33 +398,46 @@ ARG is the ex argument to :global."
 (defface evil-traces-join-indicator nil
   "The face for :join's indicator.")
 
-(defcustom evil-traces-join-indicator "  <<<"
+(defcustom evil-traces-join-indicator "<<<"
   "The indicator for :join."
   :type 'string)
+
+(defcustom evil-traces-join-indicator-padding 2
+  "The number of spaces to add before :join's indicator."
+  :type 'integer)
 
 (defun evil-traces--join-indicator-positions (beg end)
   "Find where to place :join's indicators.
 BEG and END define the range of the lines to join."
-  (let* ((positions (cl-loop for pos in (evil-traces--points-at-visible-bol beg end)
-                             collect (save-excursion
-                                       (goto-char pos)
-                                       (point-at-eol))))
-         (visual-end (save-excursion
-                       (goto-char (cl-first (last positions)))
-                       (point-at-bol 2))))
-    (when (and (> (length positions) 1) (= visual-end end)) ; ignore the last :join line
-      (setq positions (butlast positions)))
-    positions))
+  (or (save-excursion
+        (cl-loop for pos in (evil-traces--points-at-visible-bol beg end)
+                 do (goto-char pos)
+                 when (/= (point-at-bol 2) end)
+                 collect (point-at-eol)))
+      (list (save-excursion
+              (goto-char beg)
+              (point-at-eol)))))
 
-(defun evil-traces--update-join-indicators (beg end)
-  "Place :join line indicators in the range from BEG to END."
-  (evil-traces--set-hl 'evil-traces-join-indicators
-                       (cl-loop for pos in (evil-traces--join-indicator-positions beg end)
-                                collect (cons pos pos))
-                       'after-string
-                       (propertize evil-traces-join-indicator
-                                   'face
-                                   'evil-traces-join-indicator)))
+;; We need to differentiate between indicators inside and outside
+;; `evil-ex-range' so that the background color isn't messed up.
+(defun evil-traces--place-join-indicators (in-positions &optional out-positions)
+  "Place :join's line indicators.
+IN-POSITIONS are positions within the current ex range.
+OUT-POSITIONS are positions outside the current ex range."
+  (let ((padding (make-string evil-traces-join-indicator-padding ?\s)))
+    (dolist (settings
+             (list
+              (list in-positions 'evil-traces-join-in-indicators 'evil-traces-join-range)
+              (list out-positions 'evil-traces-join-out-indicators 'default)))
+      (cl-destructuring-bind (positions hl-name padding-face) settings
+        (evil-traces--set-hl hl-name
+                             (cl-loop for pos in positions
+                                      collect (cons pos pos))
+                             'after-string
+                             (concat (propertize padding 'face padding-face)
+                                     (propertize evil-traces-join-indicator
+                                                 'face
+                                                 'evil-traces-join-indicator)))))))
 
 (defun evil-traces--update-join (range arg buffer)
   "Highlight RANGE and add indicators for :join lines in BUFFER.
@@ -437,15 +450,16 @@ ARG is :join's ex argument."
        'evil-traces-join-range (cons beg end) 'face 'evil-traces-join-range)
       (cond
        ((not arg)
-        (evil-traces--update-join-indicators beg end))
+        (evil-traces--place-join-indicators
+         (evil-traces--join-indicator-positions beg end)))
        ((string-match-p "^[1-9][0-9]*$" arg)
-        (let ((join-beg (save-excursion
-                          (goto-char end)
-                          (point-at-bol 0)))
-              (join-end (save-excursion
-                          (goto-char end)
-                          (point-at-bol (string-to-number arg)))))
-          (evil-traces--update-join-indicators join-beg join-end)))
+        (let ((indicator-positions
+               (save-excursion
+                 (goto-char end)
+                 (evil-traces--join-indicator-positions
+                  (point-at-bol 0) (point-at-bol (string-to-number arg))))))
+          (evil-traces--place-join-indicators (list (pop indicator-positions))
+                                              indicator-positions)))
        (t
         (evil-ex-echo "Invalid count"))))))
 
@@ -459,7 +473,8 @@ string representing the count argument to :join."
     (stop
      (evil-traces--cancel-timer)
      (evil-traces--delete-hl 'evil-traces-join-range)
-     (evil-traces--delete-hl 'evil-traces-join-indicators))))
+     (evil-traces--delete-hl 'evil-traces-join-in-indicators)
+     (evil-traces--delete-hl 'evil-traces-join-out-indicators))))
 
 (evil-ex-define-argument-type evil-traces-join
   :runner evil-traces--hl-join)

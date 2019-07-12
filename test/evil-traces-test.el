@@ -227,11 +227,13 @@ This function returns point-min and point-max as the sole window range."
         (evil-test-buffer
           "no\nno\n[n]o\nno\nno\nno\n"
           (":j"
-           "\M-:" (format "%S" `(evil-traces--should-have-hls
+           "\M-:" (format "%S" '(evil-traces--should-have-hls
                                  '((evil-traces-join-range
                                     . ((7 10 face evil-traces-join-range)))
-                                   (evil-traces-join-indicators
-                                    . ((9 9 after-string ,evil-traces-join-indicator))))))
+                                   (evil-traces-join-in-indicators
+                                    . ((9 9 after-string "  <<<")))
+                                   (evil-traces-join-out-indicators
+                                    . nil))))
            [return] [return])
           (evil-traces--should-have-hls nil)
           "no\nno\nno[ ]no\nno\nno\n"
@@ -242,13 +244,15 @@ This function returns point-min and point-max as the sole window range."
         (evil-test-buffer
           "no\nno\n[n]o\nno\nno\nno\n"
           (":-1,+2j"
-           "\M-:" (format "%S" `(evil-traces--should-have-hls
+           "\M-:" (format "%S" '(evil-traces--should-have-hls
                                  '((evil-traces-join-range
                                     . ((4 16 face evil-traces-join-range)))
-                                   (evil-traces-join-indicators
-                                    . ((6 6 after-string ,evil-traces-join-indicator)
-                                       (9 9 after-string ,evil-traces-join-indicator)
-                                       (12 12 after-string ,evil-traces-join-indicator))))))
+                                   (evil-traces-join-in-indicators
+                                    . ((6 6 after-string "  <<<")
+                                       (9 9 after-string "  <<<")
+                                       (12 12 after-string "  <<<")))
+                                   (evil-traces-join-out-indicators
+                                    . nil))))
            [return] [return])
           (evil-traces--should-have-hls nil)
           "no\nno no no[ ]no\nno\n"))))
@@ -258,12 +262,13 @@ This function returns point-min and point-max as the sole window range."
         (evil-test-buffer
           "no\nno\n[n]o\nno\nno\nno\n"
           (":j3"
-           "\M-:" (format "%S" `(evil-traces--should-have-hls
+           "\M-:" (format "%S" '(evil-traces--should-have-hls
                                  '((evil-traces-join-range
                                     . ((7 10 face evil-traces-join-range)))
-                                   (evil-traces-join-indicators
-                                    . ((9 9 after-string ,evil-traces-join-indicator)
-                                       (12 12 after-string ,evil-traces-join-indicator))))))
+                                   (evil-traces-join-in-indicators
+                                    . ((9 9 after-string "  <<<")))
+                                   (evil-traces-join-out-indicators
+                                    . ((12 12 after-string "  <<<"))))))
            [return] [return])
           (evil-traces--should-have-hls nil)
           "no\nno\nno no[ ]no\nno\n"))))
@@ -273,12 +278,13 @@ This function returns point-min and point-max as the sole window range."
         (evil-test-buffer
           "[n]o\nno\nno\nno\nno\nno\n"
           (":1,3j3"
-           "\M-:" (format "%S" `(evil-traces--should-have-hls
+           "\M-:" (format "%S" '(evil-traces--should-have-hls
                                  '((evil-traces-join-range
                                     . ((1 10 face evil-traces-join-range)))
-                                   (evil-traces-join-indicators
-                                    . ((9 9 after-string ,evil-traces-join-indicator)
-                                       (12 12 after-string ,evil-traces-join-indicator))))))
+                                   (evil-traces-join-in-indicators
+                                    . ((9 9 after-string "  <<<")))
+                                   (evil-traces-join-out-indicators
+                                    . ((12 12 after-string "  <<<"))))))
            [return] [return])
           (evil-traces--should-have-hls nil)
           "no\nno\nno no[ ]no\nno\n")))))
