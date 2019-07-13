@@ -153,9 +153,9 @@ the next."
   "A table where the keys are names and values are lists of overlays.")
 
 (defun evil-traces--set-hl (name range &rest props)
-  "Highlight RANGE with PROPS in the current buffer.
-NAME is the name for the highlight.  RANGE may be a (beg . end) pair or
-a list of such pairs, and PROPS is an overlay property list."
+  "Set the highlight named NAME onto RANGE.
+RANGE may be a (beg . end) pair or a list of such pairs.
+PROPS is an overlay property list."
   (let ((ranges (if (numberp (cl-first range)) (list range) range))
         (overlays (gethash name evil-traces--highlights))
         new-overlays)
@@ -229,9 +229,9 @@ If the timer is currently running, then it is canceled first."
 ;; ** Simple
 (defun evil-traces--update-simple (hl-name hl-face range buffer
                                            &optional default-range)
-  "Highlight RANGE in BUFFER using HL-FACE.
-HL-NAME is the name for the highlight, and DEFAULT-RANGE may be either
-'line or 'buffer."
+  "Set the highlight named HL-NAME, using HL-FACE, onto RANGE.
+BUFFER is the buffer to highlight in.
+DEFAULT-RANGE may be either 'line or 'buffer."
   (with-current-buffer buffer
     (if-let ((range (or range
                         (cl-case default-range
@@ -501,8 +501,8 @@ OUT-POSITIONS are positions outside the current ex range."
                                           'evil-traces-join-indicator)))))))
 
 (defun evil-traces--update-join (range arg buffer)
-  "Highlight RANGE and add indicators for :join lines in BUFFER.
-ARG is :join's ex argument."
+  "Highlight RANGE and add indicators for :join's lines.
+ARG is :join's ex argument, and BUFFER is the buffer to highlight in."
   (with-current-buffer buffer
     (let* ((range (or range (evil-ex-range (evil-ex-current-line))))
            (beg (evil-range-beginning range))
@@ -547,8 +547,8 @@ string representing the count argument to :join."
   (memq option '(?i ?u)))
 
 (defun evil-traces--update-sort (range bang arg buffer)
-  "Preview :sort over RANGE in BUFFER if RANGE is non-nil.
-BANG is :sort's ex bang, and ARG is :sort's ex argument."
+  "Preview :sort over RANGE, with BANG and ARG as :sort's parameters.
+BUFFER is the buffer to preview in."
   (with-current-buffer buffer
     (cond
      ((and arg (cl-notevery #'evil-traces--sort-option-p (string-to-list arg)))
@@ -575,7 +575,8 @@ BANG is :sort's ex bang, and ARG is :sort's ex argument."
 (defun evil-traces--hl-sort (flag &optional arg)
   "Preview the results of :sort.
 FLAG indicates whether to update or stop highlights, and ARG is
-:sort's ex argument."
+:sort's ex argument.  If `evil-ex-range' is non-nil, no preview is
+shown."
   (cl-case flag
     (update
      (evil-traces--run-timer #'evil-traces--update-sort
@@ -598,7 +599,7 @@ FLAG indicates whether to update or stop highlights, and ARG is
     (funcall runner flag arg)))
 
 (defun evil-traces--update-substitute (range arg buffer)
-  "Preview :substitute in BUFFER according to RANGE and ARG."
+  "Preview :substitute according to RANGE and ARG in BUFFER."
   (with-current-buffer buffer
     (let ((range (or range (evil-ex-range (evil-ex-current-line)))))
       (evil-traces--set-hl 'evil-traces-substitute-range
