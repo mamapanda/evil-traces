@@ -41,29 +41,114 @@
   :prefix "evil-traces"
   :group 'evil)
 
-;; * Timer
+;; * User Options
+;; ** Faces
+(defface evil-traces-default '((t (:inherit region)))
+  "The default face for evil-traces overlays.")
+
+(defface evil-traces-change '((t (:inherit evil-traces-default)))
+  "Face for :change commands.")
+
+(defface evil-traces-delete '((t (:inherit evil-traces-default)))
+  "Face for :delete commands.")
+
+(defface evil-traces-normal '((t (:inherit evil-traces-default)))
+  "Face for :normal commands.")
+
+(defface evil-traces-shell-command '((t (:inherit evil-traces-default)))
+  "Face for :! commands.")
+
+(defface evil-traces-yank '((t (:inherit evil-traces-default)))
+  "Face for :yank commands.")
+
+(defface evil-traces-move-range '((t (:inherit evil-traces-default)))
+  "Face for :move's range.")
+
+(defface evil-traces-move-preview '((t (:inherit evil-traces-default)))
+  "Face for :move's preview.")
+
+(defface evil-traces-copy-range '((t (:inherit evil-traces-default)))
+  "Face for :copy's range.")
+
+(defface evil-traces-copy-preview '((t (:inherit evil-traces-default)))
+  "Face for :copy's preview.")
+
+(defface evil-traces-global-range '((t :inherit evil-traces-default))
+  "The face for :global's range.")
+
+(defface evil-traces-global-match '((t :inherit isearch))
+  "The face for matched :global terms.")
+
+(defface evil-traces-join-range '((t (:inherit evil-traces-default)))
+  "The face for :join's range.")
+
+(defface evil-traces-join-indicator nil
+  "The face for :join's indicator.")
+
+(defface evil-traces-sort '((t (:inherit evil-traces-default)))
+  "The face for :sort.")
+
+(defface evil-traces-substitute-range '((t (:inherit evil-traces-default)))
+  "The face for :substitute's range.")
+
+;; ** Variables
+(defcustom evil-traces-argument-type-alist
+  '((evil-change             . evil-traces-change)
+    (evil-copy               . evil-traces-copy)
+    (evil-ex-delete          . evil-traces-delete)
+    (evil-ex-global          . evil-traces-global)
+    (evil-ex-global-inverted . evil-traces-global)
+    (evil-ex-join            . evil-traces-join)
+    (evil-ex-normal          . evil-traces-normal)
+    (evil-ex-sort            . evil-traces-sort)
+    (evil-ex-substitute      . evil-traces-substitute)
+    (evil-ex-yank            . evil-traces-yank)
+    (evil-move               . evil-traces-move)
+    (evil-shell-command      . evil-traces-shell-command))
+  "An alist mapping `evil-ex' functions to their argument types."
+  :type '(alist :key function :value symbol))
+
+(defcustom evil-traces-lighter " traces"
+  "Lighter for evil-traces."
+  :type 'string)
+
 (defcustom evil-traces-idle-delay 0.05
   "The idle delay, in seconds, before evil-traces should update."
   :type 'float)
 
-(defvar evil-traces--timer nil
-  "The timer for evil-traces updates.")
+(defcustom evil-traces-join-indicator "<<<"
+  "The indicator for :join.
+This will be placed at the end of each line that will be joined with
+the next."
+  :type 'string)
 
-(defun evil-traces--run-timer (fn &rest args)
-  "Use evil-traces' timer to run FN with ARGS.
-If the timer is currently running, then it is canceled first."
-  (when evil-traces--timer
-    (cancel-timer evil-traces--timer))
-  (setq evil-traces--timer
-        (apply #'run-at-time evil-traces-idle-delay nil fn args)))
+(defcustom evil-traces-join-indicator-padding 2
+  "The number of spaces to add before :join's indicator."
+  :type 'integer)
 
-(defun evil-traces--cancel-timer ()
-  "Cancel evil-traces' timer if it is currently running."
-  (when evil-traces--timer
-    (cancel-timer evil-traces--timer)
-    (setq evil-traces--timer nil)))
+;; * General Functions
+;; ** Changing Faces
+(defun evil-traces-use-diff-faces ()
+  "Use `diff-mode' faces for evil-traces."
+  (require 'diff-mode)
+  ;; Setting :sort's face can be kind of distracting.
+  (custom-set-faces
+   '(evil-traces-change           ((t (:inherit diff-removed))))
+   '(evil-traces-copy-preview     ((t (:inherit diff-added))))
+   '(evil-traces-copy-range       ((t (:inherit diff-changed))))
+   '(evil-traces-delete           ((t (:inherit diff-removed))))
+   '(evil-traces-global-match     ((t (:inherit diff-added))))
+   '(evil-traces-global-range     ((t (:inherit diff-changed))))
+   '(evil-traces-join-indicator   ((t (:inherit diff-added))))
+   '(evil-traces-join-range       ((t (:inherit diff-changed))))
+   '(evil-traces-move-preview     ((t (:inherit diff-added))))
+   '(evil-traces-move-range       ((t (:inherit diff-removed))))
+   '(evil-traces-normal           ((t (:inherit diff-changed))))
+   '(evil-traces-shell-command    ((t (:inherit diff-changed))))
+   '(evil-traces-substitute-range ((t (:inherit diff-changed))))
+   '(evil-traces-yank             ((t (:inherit diff-changed))))))
 
-;; * Overlay Management
+;; ** Overlays
 (defvar evil-traces--highlights (make-hash-table)
   "A table where the keys are names and values are lists of overlays.")
 
@@ -90,16 +175,30 @@ a list of such pairs, and PROPS is an overlay property list."
   (mapc #'delete-overlay (gethash name evil-traces--highlights))
   (remhash name evil-traces--highlights))
 
-;; * Visual Previews
-;; ** General Options
-(defface evil-traces-default '((t (:inherit region)))
-  "The default face for evil-traces overlays.")
+;; ** Timer
+(defvar evil-traces--timer nil
+  "The timer for evil-traces updates.")
 
-;; ** Helper Functions
+(defun evil-traces--run-timer (fn &rest args)
+  "Use evil-traces' timer to run FN with ARGS.
+If the timer is currently running, then it is canceled first."
+  (when evil-traces--timer
+    (cancel-timer evil-traces--timer))
+  (setq evil-traces--timer
+        (apply #'run-at-time evil-traces-idle-delay nil fn args)))
+
+(defun evil-traces--cancel-timer ()
+  "Cancel evil-traces' timer if it is currently running."
+  (when evil-traces--timer
+    (cancel-timer evil-traces--timer)
+    (setq evil-traces--timer nil)))
+
+;; ** Windows
 (defun evil-traces--window-ranges (buffer)
   "Calculate the ranges covered by BUFFER's active windows."
   (let ((ranges (cl-loop for window in (get-buffer-window-list buffer nil t)
-                         collect (cons (window-start window) (window-end window))))
+                         collect (cons (window-start window)
+                                       (window-end window))))
         combined-ranges)
     (setq ranges (cl-sort ranges #'< :key #'car))
     (while (>= (length ranges) 2)
@@ -126,8 +225,10 @@ a list of such pairs, and PROPS is an overlay property list."
             (forward-line)))))
     (nreverse positions)))
 
+;; * Visual Previews
 ;; ** Simple
-(defun evil-traces--update-simple (hl-name hl-face range buffer &optional default-range)
+(defun evil-traces--update-simple (hl-name hl-face range buffer
+                                           &optional default-range)
   "Highlight RANGE in BUFFER using HL-FACE.
 HL-NAME is the name for the highlight, and DEFAULT-RANGE may be either
 'line or 'buffer."
@@ -137,7 +238,8 @@ HL-NAME is the name for the highlight, and DEFAULT-RANGE may be either
                           (line (evil-ex-range (evil-ex-current-line)))
                           (buffer (evil-ex-full-range))))))
         (evil-traces--set-hl hl-name
-                             (cons (evil-range-beginning range) (evil-range-end range))
+                             (cons (evil-range-beginning range)
+                                   (evil-range-end range))
                              'face
                              hl-face)
       (evil-traces--set-hl hl-name nil))))
@@ -159,18 +261,12 @@ DEFAULT-RANGE may be either 'line or 'buffer."
      (evil-traces--cancel-timer)
      (evil-traces--delete-hl hl-name))))
 
-(defface evil-traces-change '((t (:inherit evil-traces-default)))
-  "Face for :change commands.")
-
 (defun evil-traces--hl-change (flag &optional _arg)
   "Update :change's highlight according to FLAG."
   (evil-traces--hl-simple 'evil-traces-change 'evil-traces-change flag 'line))
 
 (evil-ex-define-argument-type evil-traces-change
   :runner evil-traces--hl-change)
-
-(defface evil-traces-delete '((t (:inherit evil-traces-default)))
-  "Face for :delete commands.")
 
 (defun evil-traces--hl-delete (flag &optional _arg)
   "Update :delete's highlight according to FLAG."
@@ -179,9 +275,6 @@ DEFAULT-RANGE may be either 'line or 'buffer."
 (evil-ex-define-argument-type evil-traces-delete
   :runner evil-traces--hl-delete)
 
-(defface evil-traces-normal '((t (:inherit evil-traces-default)))
-  "Face for :normal commands.")
-
 (defun evil-traces--hl-normal (flag &optional _arg)
   "Update :normal's highlight according to FLAG."
   (evil-traces--hl-simple 'evil-traces-normal 'evil-traces-normal flag 'line))
@@ -189,18 +282,13 @@ DEFAULT-RANGE may be either 'line or 'buffer."
 (evil-ex-define-argument-type evil-traces-normal
   :runner evil-traces--hl-normal)
 
-(defface evil-traces-shell-command '((t (:inherit evil-traces-default)))
-  "Face for :! commands.")
-
 (defun evil-traces--hl-shell-command (flag &optional _arg)
   "Update :!'s highlight according to FLAG."
-  (evil-traces--hl-simple 'evil-traces-shell-command 'evil-traces-shell-command flag))
+  (evil-traces--hl-simple
+   'evil-traces-shell-command 'evil-traces-shell-command flag))
 
 (evil-ex-define-argument-type evil-traces-shell-command
   :runner evil-traces--hl-shell-command)
-
-(defface evil-traces-yank '((t (:inherit evil-traces-default)))
-  "Face for :yank commands.")
 
 (defun evil-traces--hl-yank (flag &optional _arg)
   "Update :yank's highlight according to FLAG."
@@ -209,7 +297,7 @@ DEFAULT-RANGE may be either 'line or 'buffer."
 (evil-ex-define-argument-type evil-traces-yank
   :runner evil-traces--hl-yank)
 
-;; ** Movers
+;; ** Move / Copy
 (defun evil-traces--parse-move (arg)
   "Parse ARG into the position where :move will place its text."
   (let ((parsed-arg (evil-ex-parse arg)))
@@ -288,12 +376,6 @@ command's ex argument."
      (evil-traces--delete-hl range-hl-name)
      (evil-traces--delete-hl preview-hl-name))))
 
-(defface evil-traces-move-range '((t (:inherit evil-traces-default)))
-  "Face for :move's range.")
-
-(defface evil-traces-move-preview '((t (:inherit evil-traces-default)))
-  "Face for :move's preview.")
-
 (defun evil-traces--hl-move (flag &optional arg)
   "Show a visual preview for :move based on FLAG and ARG."
   (evil-traces--hl-mover 'evil-traces-move-range
@@ -305,12 +387,6 @@ command's ex argument."
 
 (evil-ex-define-argument-type evil-traces-move
   :runner evil-traces--hl-move)
-
-(defface evil-traces-copy-range '((t (:inherit evil-traces-default)))
-  "Face for :copy's range.")
-
-(defface evil-traces-copy-preview '((t (:inherit evil-traces-default)))
-  "Face for :copy's preview.")
 
 (defun evil-traces--hl-copy (flag &optional arg)
   "Show a visual preview for :copy based on FLAG and ARG."
@@ -325,19 +401,14 @@ command's ex argument."
   :runner evil-traces--hl-copy)
 
 ;; ** Global
-(defface evil-traces-global-range '((t :inherit evil-traces-default))
-  "The face for :global's range.")
-
-(defface evil-traces-global-match '((t :inherit isearch))
-  "The face for matched :global terms.")
-
 (defvar evil-traces--last-global-params nil
   "The last parameters passed to :global.")
 
 (defun evil-traces--global-matches (pattern beg end)
   "Return the bounds of each match of PATTERN between BEG and END."
   (when pattern
-    (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case) 'insensitive)))
+    (let ((case-fold-search (eq (evil-ex-regex-case pattern evil-ex-search-case)
+                                'insensitive)))
       (save-excursion
         (save-match-data
           (cl-loop for pos in (evil-traces--points-at-visible-bol beg end)
@@ -382,7 +453,8 @@ ARG is the ex argument to :global."
     (start
      (setq evil-traces--last-global-params nil))
     (update
-     (evil-traces--run-timer #'evil-traces--update-global evil-ex-range arg evil-ex-current-buffer))
+     (evil-traces--run-timer
+      #'evil-traces--update-global evil-ex-range arg evil-ex-current-buffer))
     (stop
      (evil-traces--cancel-timer)
      (evil-traces--delete-hl 'evil-traces-global-range)
@@ -392,20 +464,6 @@ ARG is the ex argument to :global."
   :runner evil-traces--hl-global)
 
 ;; ** Join
-(defface evil-traces-join-range '((t (:inherit evil-traces-default)))
-  "The face for :join's range.")
-
-(defface evil-traces-join-indicator nil
-  "The face for :join's indicator.")
-
-(defcustom evil-traces-join-indicator "<<<"
-  "The indicator for :join."
-  :type 'string)
-
-(defcustom evil-traces-join-indicator-padding 2
-  "The number of spaces to add before :join's indicator."
-  :type 'integer)
-
 (defun evil-traces--join-indicator-positions (beg end)
   "Find where to place :join's indicators.
 BEG and END define the range of the lines to join."
@@ -425,19 +483,22 @@ BEG and END define the range of the lines to join."
 IN-POSITIONS are positions within the current ex range.
 OUT-POSITIONS are positions outside the current ex range."
   (let ((padding (make-string evil-traces-join-indicator-padding ?\s)))
-    (dolist (settings
-             (list
-              (list in-positions 'evil-traces-join-in-indicators 'evil-traces-join-range)
-              (list out-positions 'evil-traces-join-out-indicators 'default)))
+    (dolist (settings (list (list in-positions
+                                  'evil-traces-join-in-indicators
+                                  'evil-traces-join-range)
+                            (list out-positions
+                                  'evil-traces-join-out-indicators
+                                  'default)))
       (cl-destructuring-bind (positions hl-name padding-face) settings
         (evil-traces--set-hl hl-name
                              (cl-loop for pos in positions
                                       collect (cons pos pos))
                              'after-string
-                             (concat (propertize padding 'face padding-face)
-                                     (propertize evil-traces-join-indicator
-                                                 'face
-                                                 'evil-traces-join-indicator)))))))
+                             (concat
+                              (propertize padding 'face padding-face)
+                              (propertize evil-traces-join-indicator
+                                          'face
+                                          'evil-traces-join-indicator)))))))
 
 (defun evil-traces--update-join (range arg buffer)
   "Highlight RANGE and add indicators for :join lines in BUFFER.
@@ -469,7 +530,8 @@ FLAG indicates whether to update or stop highlights, and ARG is a
 string representing the count argument to :join."
   (cl-case flag
     (update
-     (evil-traces--run-timer #'evil-traces--update-join evil-ex-range arg evil-ex-current-buffer))
+     (evil-traces--run-timer
+      #'evil-traces--update-join evil-ex-range arg evil-ex-current-buffer))
     (stop
      (evil-traces--cancel-timer)
      (evil-traces--delete-hl 'evil-traces-join-range)
@@ -480,9 +542,6 @@ string representing the count argument to :join."
   :runner evil-traces--hl-join)
 
 ;; ** Sort
-(defface evil-traces-sort '((t (:inherit evil-traces-default)))
-  "The face for :sort.")
-
 (defun evil-traces--sort-option-p (option)
   "Check if OPTION is a valid :sort option."
   (memq option '(?i ?u)))
@@ -532,9 +591,6 @@ FLAG indicates whether to update or stop highlights, and ARG is
   :runner evil-traces--hl-sort)
 
 ;; ** Substitute
-(defface evil-traces-substitute-range '((t (:inherit evil-traces-default)))
-  "The face for :substitute's range.")
-
 (defun evil-traces--evil-substitute-runner (flag &optional arg)
   "Call evil's :substitute runner with FLAG and ARG."
   (when-let ((runner (evil-ex-argument-handler-runner
@@ -570,48 +626,7 @@ FLAG indicates whether to start, update, or stop previews, and ARG is
 (evil-ex-define-argument-type evil-traces-substitute
   :runner evil-traces--hl-substitute)
 
-;; ** Changing Faces
-(defun evil-traces-use-diff-faces ()
-  "Use `diff-mode' faces for evil-traces."
-  (require 'diff-mode)
-  ;; Setting :sort's face can be kind of distracting.
-  (custom-set-faces
-   '(evil-traces-change           ((t (:inherit diff-removed))))
-   '(evil-traces-copy-preview     ((t (:inherit diff-added))))
-   '(evil-traces-copy-range       ((t (:inherit diff-changed))))
-   '(evil-traces-delete           ((t (:inherit diff-removed))))
-   '(evil-traces-global-match     ((t (:inherit diff-added))))
-   '(evil-traces-global-range     ((t (:inherit diff-changed))))
-   '(evil-traces-join-indicator   ((t (:inherit diff-added))))
-   '(evil-traces-join-range       ((t (:inherit diff-changed))))
-   '(evil-traces-move-preview     ((t (:inherit diff-added))))
-   '(evil-traces-move-range       ((t (:inherit diff-removed))))
-   '(evil-traces-normal           ((t (:inherit diff-changed))))
-   '(evil-traces-shell-command    ((t (:inherit diff-changed))))
-   '(evil-traces-substitute-range ((t (:inherit diff-changed))))
-   '(evil-traces-yank             ((t (:inherit diff-changed))))))
-
 ;; * Minor Mode
-(defcustom evil-traces-argument-type-alist
-  '((evil-change             . evil-traces-change)
-    (evil-copy               . evil-traces-copy)
-    (evil-ex-delete          . evil-traces-delete)
-    (evil-ex-global          . evil-traces-global)
-    (evil-ex-global-inverted . evil-traces-global)
-    (evil-ex-join            . evil-traces-join)
-    (evil-ex-normal          . evil-traces-normal)
-    (evil-ex-sort            . evil-traces-sort)
-    (evil-ex-substitute      . evil-traces-substitute)
-    (evil-ex-yank            . evil-traces-yank)
-    (evil-move               . evil-traces-move)
-    (evil-shell-command      . evil-traces-shell-command))
-  "An alist mapping `evil-ex' functions to their argument types."
-  :type '(alist :key function :value symbol))
-
-(defcustom evil-traces-lighter " traces"
-  "Lighter for evil-traces."
-  :type 'string)
-
 (defvar evil-traces--old-argument-types-alist nil
   "An alist mapping `evil-ex' function to their old argument types.
 This is used to restore the appropriate argument types when
