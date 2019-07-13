@@ -1,6 +1,122 @@
 #+TITLE: Evil Traces
 #+AUTHOR: Daniel Phan
 
-Work in progress. If you really want to test it out, turn on the minor
-mode with ~M-x evil-traces-mode~. See the variable
-~evil-traces-argument-type-alist~ for currently supported ex commands.
+~evil-traces~ is a port of [[https://github.com/markonm/traces.vim][traces.vim]]. It enables visual previews for
+certain ~evil-ex~ commands.
+
+Currently, these commands are:
+- change
+- copy
+- delete
+- global
+- join
+- move
+- normal
+- shell command
+- sort
+- substitute
+  - ~evil-traces~ reuses ~evil~'s runner function for replacement and match previews
+- vglobal
+- yank
+
+* Basic Example
+  This package isn't on MELPA at the moment. In the meantime, you can
+  clone this repository directly and add ~evil-traces.el~ to your load
+  path. Here's a basic setup:
+
+  #+BEGIN_SRC emacs-lisp
+    (use-package evil-traces
+      :load-path "<load/path/for/evil/traces>"
+      :config
+      (evil-traces-use-diff-faces) ; if you want to use diff's faces
+      (evil-traces-mode))
+  #+END_SRC
+
+* Customization
+  To view all available faces and options, see ~M-x customize-group
+  [RET] evil-traces [RET]~.
+
+** Faces
+   ~evil-traces~ uses the following faces:
+   - ~evil-traces-default~
+   - ~evil-traces-change~
+   - ~evil-traces-copy-preview~
+   - ~evil-traces-copy-range~
+   - ~evil-traces-delete~
+   - ~evil-traces-global-match~
+   - ~evil-traces-global-range~
+   - ~evil-traces-join-indicator~
+   - ~evil-traces-join-range~
+   - ~evil-traces-move-preview~
+   - ~evil-traces-move-range~
+   - ~evil-traces-normal~
+   - ~evil-traces-shell-command~
+   - ~evil-traces-sort~
+   - ~evil-traces-substitute-range~
+   - ~evil-traces-yank~
+
+   By default, most faces inherit from ~evil-traces-default~, which
+   inherits from ~region~. You may use ~custom-set-faces~ to edit face
+   values:
+
+   #+BEGIN_SRC emacs-lisp
+     (custom-set-faces
+      '(evil-traces-join-indicator ((t (:inherit diff-added))))
+      '(evil-traces-join-range     ((t (:inherit diff-changed))))
+      ;; etc.
+      )
+   #+END_SRC
+
+** Variables
+   The idle update delay is controlled by ~evil-traces-idle-delay~.
+
+   #+BEGIN_SRC emacs-lisp
+     (setq evil-traces-idle-delay 0.05)
+   #+END_SRC
+
+   ~evil-traces-join-indicator~ and
+   ~evil-traces-join-indicator-padding~ control the appearance of
+   ~:join~'s end-of-line indicators.
+
+   #+BEGIN_SRC emacs-lisp
+     (setq evil-traces-join-indicator "<<<"
+           evil-traces-join-indicator-padding 2)
+   #+END_SRC
+
+   ~evil-traces-argument-type-alist~ determines what argument type
+   each ex command gets mapped to when ~evil-traces-mode~ is
+   on. ~evil~ uses the argument type to determine which highlighting
+   function to use, so this variable can be modified to change
+   highlighting behavior. For example,
+
+   #+BEGIN_SRC emacs-lisp
+     ;; Enable :change when lispyville-mode is on
+     (add-to-list 'evil-traces-argument-type-alist '(lispyville-change . evil-traces-change))
+
+     ;; You can use :delete's preview for :move if :move's annoys you.
+     (add-to-list 'evil-traces-argument-type-alist '(evil-move . evil-traces-delete))
+   #+END_SRC
+
+   If you want to add your own argument type, take a look at
+   ~evil-ex-define-argument-type~ and its ~:runner~ keyword.
+
+* Sample GIFs
+  ~:delete~
+
+  [[./img/delete.gif]]
+
+  ~:global~
+
+  [[./img/global.gif]]
+
+  ~:join~
+
+  [[./img/join.gif]]
+
+  ~:move~
+
+  [[./img/move.gif]]
+
+* Inspirations
+  - [[https://github.com/edkolev/evil-goggles][evil-goggles]]
+  - [[https://github.com/markonm/traces.vim][traces.vim]]
