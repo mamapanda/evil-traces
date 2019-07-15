@@ -1,5 +1,7 @@
 ;;; evil-traces.el --- Visual hints for `evil-ex' -*- lexical-binding: t -*-
 
+;; Copyright (C) 2019 Daniel Phan
+
 ;; Author: Daniel Phan <daniel.phan36@gmail.com>
 ;; Version: 0.0.1
 ;; Package-Requires: ((emacs "25.1") (evil "1.2.13") (cl-lib "0.6"))
