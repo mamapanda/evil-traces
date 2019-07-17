@@ -579,8 +579,8 @@ BUFFER is the buffer to preview in."
 (defun evil-traces--hl-sort (flag &optional arg)
   "Preview the results of :sort.
 FLAG indicates whether to update or stop highlights, and ARG is
-:sort's ex argument.  If `evil-ex-range' is non-nil, no preview is
-shown."
+:sort's ex argument.  If the variable `evil-ex-range' is nil, no
+preview is shown."
   (cl-case flag
     (update
      (evil-traces--run-timer #'evil-traces--update-sort
