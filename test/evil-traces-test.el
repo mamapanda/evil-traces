@@ -236,8 +236,7 @@ This function returns point-min and point-max as the sole window range."
                                     . nil))))
            [return] [return])
           (evil-traces--should-have-hls nil)
-          "no\nno\nno[ ]no\nno\nno\n"
-          ))))
+          "no\nno\nno[ ]no\nno\nno\n"))))
   (ert-info ("Range given")
     (evil-traces--without-timer
       (cl-letf (((symbol-function 'evil-traces--window-ranges) #'evil-traces--buffer-limits))
