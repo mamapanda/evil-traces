@@ -34,6 +34,32 @@
 
 ;;; Code:
 
+;; * Some Notes
+;; - If a highlight needs to be cleared during a regular update, then
+;;   use (evil-traces--set-hl hl-name nil) instead of
+;;   (evil-traces--delete-hl hl-name).  The former will create an
+;;   entry in `evil-traces--highlights' and make things more
+;;   predictable for testing.  If clearing due to a suspension or
+;;   stop, then just use `evil-traces--delete-hl'.
+;; - The ARG runner parameter and `evil-ex-argument' are the same.
+;;   Using `evil-ex-argument' is a bit more consistent with the other
+;;   `evil-ex' variables though, since they aren't explicitly passed
+;;   to the runner functions.
+;; - After calling a runner with 'start, `evil-ex-update' will
+;;   immediately call it with 'update, so there's no need to set
+;;   highlights in the 'start case like evil's :substitute runner
+;;   does.
+
+;; Todo List
+;; - Eventually make `evil-traces--run-timer',
+;;   `evil-traces--cancel-timer', `evil-traces--reset-state' and
+;;   `evil-traces--with-possible-suspend' public
+;; - `evil-traces-use-diff-refine-faces'
+;;   - Though some faces should just use only :foreground to avoid
+;;     weird coloring.
+;; - Option for evil-traces to not echo warnings.
+;;   - `evil-traces-echo-information' variable + `evil-traces-echo' function
+
 ;; * Setup
 (require 'cl-lib)
 (require 'evil)
@@ -42,7 +68,7 @@
 
 (defgroup evil-traces nil
   "Visual feedback for `evil-ex' commands."
-  :prefix "evil-traces"
+  :prefix "evil-traces-"
   :group 'evil)
 
 ;; * User Options
@@ -77,10 +103,10 @@
 (defface evil-traces-copy-preview '((t (:inherit evil-traces-default)))
   "Face for :copy's preview.")
 
-(defface evil-traces-global-range '((t :inherit evil-traces-default))
+(defface evil-traces-global-range '((t (:inherit evil-traces-default)))
   "The face for :global's range.")
 
-(defface evil-traces-global-match '((t :inherit isearch))
+(defface evil-traces-global-match '((t (:inherit isearch)))
   "The face for matched :global terms.")
 
 (defface evil-traces-join-range '((t (:inherit evil-traces-default)))
