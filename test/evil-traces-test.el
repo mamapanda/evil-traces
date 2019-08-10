@@ -69,6 +69,10 @@ The alists should have the same specification as
 This function returns `point-min' and `point-max' as the sole window range."
   (list (cons (point-min) (point-max))))
 
+(defun evil-traces--no-range-and-arg-p ()
+  "Return non-nil if both `evil-ex-range' and `evil-ex-argument' are nil."
+  (and (null evil-ex-range) (null evil-ex-argument)))
+
 (defmacro evil-traces--with-test-env (&rest body)
   "Execute BODY in an environment suitable for testing."
   (declare (indent 0))
@@ -121,7 +125,22 @@ This function returns `point-min' and `point-max' as the sole window range."
         "test\n[t]eletubby\n")))
   ;; At the moment, there are no simple highlighters with the whole
   ;; buffer as the default range.
-  )
+  (ert-info ("Suspend highlighting")
+    (evil-traces--with-test-env
+      (let ((evil-traces-suspend-function #'evil-traces--no-range-and-arg-p))
+        (evil-test-buffer
+          "[t]est\nabcde\npotato\nteletubby\n"
+          (":1d"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-delete . ((1 6 face evil-traces-delete)))))
+           "\C-u" "d"
+           (evil-traces--kbd-confirm-hls nil)
+           "\C-u" "1d"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-delete . ((1 6 face evil-traces-delete)))))
+           [return])
+          (evil-traces--should-have-hls nil)
+          "[a]bcde\npotato\nteletubby\n")))))
 
 (ert-deftest evil-traces-test-move-and-copy ()
   "Test highlighting :move and :copy."
@@ -146,7 +165,25 @@ This function returns `point-min' and `point-max' as the sole window range."
             (evil-traces-copy-preview .  ((1 1 before-string "potato\n")))))
          [return])
         (evil-traces--should-have-hls nil)
-        "[p]otato\ntest\nabcde\npotato\nteletubby\n"))))
+        "[p]otato\ntest\nabcde\npotato\nteletubby\n")))
+  (ert-info ("Suspend highlighting")
+    (evil-traces--with-test-env
+      (let ((evil-traces-suspend-function #'evil-traces--no-range-and-arg-p))
+        (evil-test-buffer
+          "[t]est\nabcde\npotato\nteletubby\n"
+          (":3t 0"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-copy-range . ((12 19 face evil-traces-copy-range)))
+              (evil-traces-copy-preview .  ((1 1 before-string "potato\n")))))
+           "\C-u" "t"
+           (evil-traces--kbd-confirm-hls nil)
+           "\C-u" "3t 0"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-copy-range . ((12 19 face evil-traces-copy-range)))
+              (evil-traces-copy-preview .  ((1 1 before-string "potato\n")))))
+           [return])
+          (evil-traces--should-have-hls nil)
+          "[p]otato\ntest\nabcde\npotato\nteletubby\n")))))
 
 (ert-deftest evil-traces-test-global ()
   "Test highlighting :global and :vglobal."
@@ -199,7 +236,27 @@ This function returns `point-min' and `point-max' as the sole window range."
                                            (20 21 face evil-traces-global-match)))))
          [return])
         (evil-traces--should-have-hls nil)
-        "test\nabcde\npotato\n[t]eletubby\nwifi\n"))))
+        "test\nabcde\npotato\n[t]eletubby\nwifi\n")))
+  (ert-info ("Suspend highlighting")
+    (evil-traces--with-test-env
+      (let ((evil-traces-suspend-function #'evil-traces--no-range-and-arg-p))
+        (evil-test-buffer
+          "[t]est\nabcde\npotato\nteletubby\n"
+          (":g/e[slt]/normal"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-global-range . ((1 29 face evil-traces-global-range)))
+              (evil-traces-global-matches . ((2 4 face evil-traces-global-match)
+                                             (20 22 face evil-traces-global-match)))))
+           "\C-u" "g"
+           (evil-traces--kbd-confirm-hls nil)
+           "\C-u" "g/e[slt]/normal"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-global-range . ((1 29 face evil-traces-global-range)))
+              (evil-traces-global-matches . ((2 4 face evil-traces-global-match)
+                                             (20 22 face evil-traces-global-match)))))
+           [return])
+          (evil-traces--should-have-hls nil)
+          "test\nabcde\npotato\n[t]eletubby\n")))))
 
 (ert-deftest evil-traces-test-join ()
   "Test highlighting :join."
@@ -252,7 +309,27 @@ This function returns `point-min' and `point-max' as the sole window range."
             (evil-traces-join-out-indicators . ((12 12 after-string "  <<<")))))
          [return])
         (evil-traces--should-have-hls nil)
-        "no\nno\nno no[ ]no\nno\n"))))
+        "no\nno\nno no[ ]no\nno\n")))
+  (ert-info ("Suspend Highlighting")
+    (evil-traces--with-test-env
+      (let ((evil-traces-suspend-function #'evil-traces--no-range-and-arg-p))
+        (evil-test-buffer
+          "[n]o\nno\nno\nno\nno\nno\n"
+          (":1,3j3"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-join-range . ((1 10 face evil-traces-join-range)))
+              (evil-traces-join-in-indicators . ((9 9 after-string "  <<<")))
+              (evil-traces-join-out-indicators . ((12 12 after-string "  <<<")))))
+           "\C-u" "j"
+           (evil-traces--kbd-confirm-hls nil)
+           "\C-u" "1,3j3"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-join-range . ((1 10 face evil-traces-join-range)))
+              (evil-traces-join-in-indicators . ((9 9 after-string "  <<<")))
+              (evil-traces-join-out-indicators . ((12 12 after-string "  <<<")))))
+           [return])
+          (evil-traces--should-have-hls nil)
+          "no\nno\nno no[ ]no\nno\n")))))
 
 (ert-deftest evil-traces-test-sort ()
   "Test highlighting :sort."
@@ -297,7 +374,25 @@ This function returns `point-min' and `point-max' as the sole window range."
                                     display "q\nasdf\nLine\n")))))
          [return])
         (evil-traces--should-have-hls nil)
-        "ensure\n[q]\nasdf\nLine\nEmacs\n"))))
+        "ensure\n[q]\nasdf\nLine\nEmacs\n")))
+  (ert-info ("Suspend highlighting")
+    (evil-traces--with-test-env
+      (let ((evil-traces-suspend-function (lambda () (null evil-ex-argument))))
+        (evil-test-buffer
+          "[e]nsure\nq\nasdf\nLine\nEmacs\n"
+          (":%sort i"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-sort . ((1 26 face evil-traces-sort
+                                      display "asdf\nEmacs\nensure\nLine\nq\n")))))
+           "\C-u" "%sort"
+           (evil-traces--kbd-confirm-hls nil)
+           "\C-u" "%sort i"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-sort . ((1 26 face evil-traces-sort
+                                      display "asdf\nEmacs\nensure\nLine\nq\n")))))
+           [return])
+          (evil-traces--should-have-hls nil)
+          "[a]sdf\nEmacs\nensure\nLine\nq\n")))))
 
 (ert-deftest evil-traces-test-substitute ()
   "Test highlighting :substitute."
@@ -320,4 +415,20 @@ This function returns `point-min' and `point-max' as the sole window range."
           '((evil-traces-substitute-range . ((5 41 face evil-traces-substitute-range)))))
          [return])
         (evil-traces--should-have-hls nil)
-        "ert\ndeftevilt\nevil\ntracevil\n[t]evilt\nsubstitute\n()\n"))))
+        "ert\ndeftevilt\nevil\ntracevil\n[t]evilt\nsubstitute\n()\n")))
+  (ert-info ("Suspend highlighting")
+    (evil-traces--with-test-env
+      (let ((evil-traces-suspend-function #'evil-traces--no-range-and-arg-p))
+        (evil-test-buffer
+          "ert\ndeftest\nevil\n[t]races\ntest\nsubstitute\n()\n"
+          (":s/ace/replace"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-substitute-range . ((18 25 face evil-traces-substitute-range)))))
+           "\C-u" "s"
+           (evil-traces--kbd-confirm-hls nil)
+           "\C-u" "s/ace/replace"
+           (evil-traces--kbd-confirm-hls
+            '((evil-traces-substitute-range . ((18 25 face evil-traces-substitute-range)))))
+           [return])
+          (evil-traces--should-have-hls nil)
+          "ert\ndeftest\nevil\n[t]rreplaces\ntest\nsubstitute\n()\n")))))
