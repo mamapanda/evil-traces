@@ -582,7 +582,7 @@ OUT-POSITIONS are positions outside the current ex range."
                                           'evil-traces-join-indicator)))))))
 
 (defun evil-traces--update-join ()
-  "Highlight RANGE and add indicators for :join's lines."
+  "Highlight :join's range and add indicators for its lines."
   (evil-traces--with-possible-suspend
       (with-current-buffer evil-ex-current-buffer
         (let* ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line))))
