@@ -54,9 +54,6 @@
 ;; - Eventually make `evil-traces--run-timer',
 ;;   `evil-traces--cancel-timer', `evil-traces--reset-state' and
 ;;   `evil-traces--with-possible-suspend' public
-;; - `evil-traces-use-diff-refine-faces'
-;;   - Though some faces should just use only :foreground to avoid
-;;     weird coloring.
 ;; - Option for evil-traces to not echo warnings.
 ;;   - `evil-traces-echo-information' variable + `evil-traces-echo' function
 
@@ -180,7 +177,36 @@ the next."
    '(evil-traces-normal           ((t (:inherit diff-changed))))
    '(evil-traces-shell-command    ((t (:inherit diff-changed))))
    '(evil-traces-substitute-range ((t (:inherit diff-changed))))
-   '(evil-traces-yank             ((t (:inherit diff-changed))))))
+   '(evil-traces-yank             ((t (:inherit diff-changed)))))
+  (custom-set-faces
+   '(evil-ex-substitute-matches
+     ((t (:inherit diff-removed :foreground unspecified :background unspecified))))
+   '(evil-ex-substitute-replacement
+     ((t (:inherit diff-added :foreground unspecified :background unspecified))))))
+
+(defun evil-traces-use-diff-refine-faces ()
+  "Use `diff-mode' refine faces for evil-traces."
+  (require 'diff-mode)
+  (custom-set-faces
+   '(evil-traces-change           ((t (:inherit diff-refine-removed))))
+   '(evil-traces-copy-preview     ((t (:inherit diff-refine-added))))
+   '(evil-traces-copy-range       ((t (:inherit diff-refine-changed))))
+   '(evil-traces-delete           ((t (:inherit diff-refine-removed))))
+   '(evil-traces-global-match     ((t (:inherit diff-refine-added))))
+   '(evil-traces-global-range     ((t (:inherit diff-refine-changed))))
+   '(evil-traces-join-indicator   ((t (:inherit diff-refine-added))))
+   '(evil-traces-join-range       ((t (:inherit diff-refine-changed))))
+   '(evil-traces-move-preview     ((t (:inherit diff-refine-added))))
+   '(evil-traces-move-range       ((t (:inherit diff-refine-removed))))
+   '(evil-traces-normal           ((t (:inherit diff-refine-changed))))
+   '(evil-traces-shell-command    ((t (:inherit diff-refine-changed))))
+   '(evil-traces-substitute-range ((t (:inherit diff-refine-changed))))
+   '(evil-traces-yank             ((t (:inherit diff-refine-changed)))))
+  (custom-set-faces
+   '(evil-ex-substitute-matches
+     ((t (:inherit diff-refine-removed :foreground unspecified :background unspecified))))
+   '(evil-ex-substitute-replacement
+     ((t (:inherit diff-refine-added :foreground unspecified :background unspecified))))))
 
 ;; ** Overlays
 (defvar evil-traces--highlights (make-hash-table)

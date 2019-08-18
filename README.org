@@ -68,6 +68,10 @@ Currently, these commands are:
       )
    #+END_SRC
 
+   Alternatively, you can set the faces with
+   ~evil-traces-use-diff-faces~ or
+   ~evil-traces-use-diff-refine-faces~.
+
 ** Variables
    The idle update delay is controlled by ~evil-traces-idle-delay~.
 
