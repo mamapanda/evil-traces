@@ -79,6 +79,13 @@ Currently, these commands are:
      (setq evil-traces-idle-delay 0.05)
    #+END_SRC
 
+   Warnings and information can be enabled or disabled through
+   ~evil-traces-enable-echo~.
+
+   #+BEGIN_SRC emacs-lisp
+     (setq evil-traces-enable-echo t)
+   #+END_SRC
+
    Visual previews can be suspended through
    ~evil-traces-suspend-function~.  ~evil-traces-suspend-function~
    takes no arguments and returns non-nil when previews should not be
