@@ -3,7 +3,7 @@
 ;; Copyright (C) 2019 Daniel Phan
 
 ;; Author: Daniel Phan <daniel.phan36@gmail.com>
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "25.1") (evil "1.2.13"))
 ;; Homepage: https://github.com/mamapanda/evil-traces
 ;; Keywords: emulations, evil, visual
@@ -40,19 +40,10 @@
 ;;   entry in `evil-traces--highlights' and make things more
 ;;   predictable for testing.  If clearing due to a suspension or
 ;;   stop, then just use `evil-traces--delete-hl'.
-;; - The ARG runner parameter and `evil-ex-argument' are the same.
-;;   Using `evil-ex-argument' is a bit more consistent with the other
-;;   `evil-ex' variables though, since they aren't explicitly passed
-;;   to the runner functions.
 ;; - After calling a runner with 'start, `evil-ex-update' will
 ;;   immediately call it with 'update, so there's no need to set
 ;;   highlights in the 'start case like evil's :substitute runner
 ;;   does.
-
-;; Todo List
-;; - Eventually make `evil-traces--run-timer',
-;;   `evil-traces--cancel-timer', `evil-traces--reset-state' and
-;;   `evil-traces--with-possible-suspend' public
 
 ;; * Setup
 (require 'cl-lib)
@@ -343,79 +334,86 @@ automatically."
             (forward-line)))))
     (nreverse positions)))
 
-;; * Visual Previews
-;; ** Simple
-(defun evil-traces--update-simple (hl-name hl-face &optional default-range)
-  "Set the highlight named HL-NAME onto the current command's range.
-The highlight will use HL-FACE as its face.  DEFAULT-RANGE may be
-either 'line or 'buffer and determines the default range if no range
-is provided."
+;; * Argument Types
+;; ** Definition
+(defun evil-traces--update-or-suspend (runner arg)
+  "Either update highlighting using RUNNER and ARG, or suspend highlighting.
+Highlight suspension is determined by `evil-traces-suspend-function'."
   (evil-traces--with-possible-suspend
-      (with-current-buffer evil-ex-current-buffer
-        (if-let ((range (or evil-ex-range
-                            (cl-case default-range
-                              (line (evil-ex-range (evil-ex-current-line)))
-                              (buffer (evil-ex-full-range))))))
-            (evil-traces--set-hl hl-name
-                                 (cons (evil-range-beginning range)
-                                       (evil-range-end range))
-                                 'face
-                                 hl-face)
-          (evil-traces--set-hl hl-name nil)))
-    (evil-traces--delete-hl hl-name)))
+      (funcall runner 'update arg)
+    (funcall runner 'stop arg)
+    (funcall runner 'start arg)))
 
-(defun evil-traces--hl-simple (hl-name hl-face flag &optional default-range)
+(defmacro evil-traces-deftype (name runner)
+  "Define `evil-ex' argument type NAME with runner function RUNNER.
+RUNNER should be a function as described by `evil-ex-define-argument-type'.
+evil-traces will automatically create a wrapper around RUNNER that handles
+highlight delays and suspension."
+  (declare (indent 2))
+  (cl-assert (symbolp name))
+  (let ((runner-var (cl-gensym "evil-traces--runner-"))
+        (flag (cl-gensym "flag-"))
+        (arg (cl-gensym "arg-")))
+    `(progn
+       (evil-ex-define-argument-type ,name
+         :runner
+         (lambda (,flag &optional ,arg)
+           ,(format "Run `%s' with highlight delays and possible suspensions." runner)
+           ;; If runner happens to be a lambda, using `let' makes the output
+           ;; code nicer, as we don't have to splice runner into multiple
+           ;; places.
+           (let ((,runner-var #',runner))
+             (cl-case ,flag
+               (start
+                (evil-traces--reset-state)
+                (funcall ,runner-var 'start ,arg))
+               (update
+                (evil-traces--run-timer #'evil-traces--update-or-suspend ,runner-var ,arg))
+               (stop
+                (evil-traces--cancel-timer)
+                (funcall ,runner-var 'stop ,arg)))))))))
+
+;; ** Simple
+(defun evil-traces--hl-simple (flag hl-name hl-face &optional default-range)
   "Handle highlighting the range of the current ex command.
-The highlight will be named HL-NAME and use HL-FACE.
 FLAG is the typical `evil-ex' argument runner flag.
+The highlight will be named HL-NAME and use HL-FACE.
 DEFAULT-RANGE may be either 'line or 'buffer."
   (cl-case flag
-    (start
-     (evil-traces--reset-state))
     (update
-     (evil-traces--run-timer #'evil-traces--update-simple
-                             hl-name
-                             hl-face
-                             default-range))
+     (with-current-buffer evil-ex-current-buffer
+       (if-let ((range (or evil-ex-range
+                           (cl-case default-range
+                             (line (evil-ex-range (evil-ex-current-line)))
+                             (buffer (evil-ex-full-range))))))
+           (evil-traces--set-hl hl-name
+                                (cons (evil-range-beginning range)
+                                      (evil-range-end range))
+                                'face
+                                hl-face)
+         (evil-traces--set-hl hl-name nil))))
     (stop
-     (evil-traces--cancel-timer)
      (evil-traces--delete-hl hl-name))))
 
-(defun evil-traces--hl-change (flag &optional _arg)
-  "Update :change's highlight according to FLAG."
-  (evil-traces--hl-simple 'evil-traces-change 'evil-traces-change flag 'line))
+(evil-traces-deftype evil-traces-change
+    (lambda (flag &optional _arg)
+      (evil-traces--hl-simple flag 'evil-traces-change 'evil-traces-change 'line)))
 
-(evil-ex-define-argument-type evil-traces-change
-  :runner evil-traces--hl-change)
+(evil-traces-deftype evil-traces-delete
+    (lambda (flag &optional _arg)
+      (evil-traces--hl-simple flag 'evil-traces-delete 'evil-traces-delete 'line)))
 
-(defun evil-traces--hl-delete (flag &optional _arg)
-  "Update :delete's highlight according to FLAG."
-  (evil-traces--hl-simple 'evil-traces-delete 'evil-traces-delete flag 'line))
+(evil-traces-deftype evil-traces-normal
+    (lambda (flag &optional _arg)
+      (evil-traces--hl-simple flag 'evil-traces-normal 'evil-traces-normal 'line)))
 
-(evil-ex-define-argument-type evil-traces-delete
-  :runner evil-traces--hl-delete)
+(evil-traces-deftype evil-traces-shell-command
+    (lambda (flag &optional _arg)
+      (evil-traces--hl-simple flag 'evil-traces-shell-command 'evil-traces-shell-command)))
 
-(defun evil-traces--hl-normal (flag &optional _arg)
-  "Update :normal's highlight according to FLAG."
-  (evil-traces--hl-simple 'evil-traces-normal 'evil-traces-normal flag 'line))
-
-(evil-ex-define-argument-type evil-traces-normal
-  :runner evil-traces--hl-normal)
-
-(defun evil-traces--hl-shell-command (flag &optional _arg)
-  "Update :!'s highlight according to FLAG."
-  (evil-traces--hl-simple
-   'evil-traces-shell-command 'evil-traces-shell-command flag))
-
-(evil-ex-define-argument-type evil-traces-shell-command
-  :runner evil-traces--hl-shell-command)
-
-(defun evil-traces--hl-yank (flag &optional _arg)
-  "Update :yank's highlight according to FLAG."
-  (evil-traces--hl-simple 'evil-traces-yank 'evil-traces-yank flag 'line))
-
-(evil-ex-define-argument-type evil-traces-yank
-  :runner evil-traces--hl-yank)
+(evil-traces-deftype evil-traces-yank
+    (lambda (flag &optional _arg)
+      (evil-traces--hl-simple flag 'evil-traces-yank 'evil-traces-yank 'line)))
 
 ;; ** Move / Copy
 (defun evil-traces--parse-move (arg)
@@ -439,32 +437,8 @@ INSERT-POS is where the text will be inserted."
         (setq text (concat "\n" text))))
     text))
 
-(defun evil-traces--update-mover (range-hl-name
-                                  range-hl-face
-                                  preview-hl-name
-                                  preview-hl-face)
-  "Update the visual feedback for a :move type command.
-RANGE-HL-NAME, RANGE-HL-FACE, PREVIEW-HL-NAME, PREVIEW-HL-FACE are the
-names and faces to use for the command's range and preview
-highlights."
-  (evil-traces--with-possible-suspend
-      (with-current-buffer evil-ex-current-buffer
-        (let* ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line))))
-               (beg (evil-range-beginning range))
-               (end (evil-range-end range)))
-          (evil-traces--set-hl range-hl-name (cons beg end) 'face range-hl-face)
-          (if-let ((insert-pos (evil-traces--parse-move evil-ex-argument)))
-              (let ((move-text (evil-traces--get-move-text beg end insert-pos)))
-                (evil-traces--set-hl preview-hl-name
-                                     (cons insert-pos insert-pos)
-                                     'before-string
-                                     (propertize move-text 'face preview-hl-face)))
-            (evil-traces--echo "Invalid address"))))
-    (progn
-      (evil-traces--delete-hl range-hl-name)
-      (evil-traces--delete-hl preview-hl-name))))
-
 (defun evil-traces--hl-mover (flag
+                              arg
                               range-hl-name
                               range-hl-face
                               preview-hl-name
@@ -472,45 +446,46 @@ highlights."
   "Highlight a :move type command's range and preview its result.
 
 FLAG ('start, 'update, or 'stop) signals what to do.
+ARG is the command's ex argument.
 
 RANGE-HL-NAME, RANGE-HL-FACE, PREVIEW-HL-NAME, PREVIEW-HL-FACE are the
 names and faces to use for the command's range and preview
 highlights."
   (cl-case flag
-    (start
-     (evil-traces--reset-state))
     (update
-     (evil-traces--run-timer #'evil-traces--update-mover
-                             range-hl-name
-                             range-hl-face
-                             preview-hl-name
-                             preview-hl-face))
+     (with-current-buffer evil-ex-current-buffer
+       (let* ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line))))
+              (beg (evil-range-beginning range))
+              (end (evil-range-end range)))
+         (evil-traces--set-hl range-hl-name (cons beg end) 'face range-hl-face)
+         (if-let ((insert-pos (evil-traces--parse-move arg)))
+             (let ((move-text (evil-traces--get-move-text beg end insert-pos)))
+               (evil-traces--set-hl preview-hl-name
+                                    (cons insert-pos insert-pos)
+                                    'before-string
+                                    (propertize move-text 'face preview-hl-face)))
+           (evil-traces--echo "Invalid address")))))
     (stop
-     (evil-traces--cancel-timer)
      (evil-traces--delete-hl range-hl-name)
      (evil-traces--delete-hl preview-hl-name))))
 
-(defun evil-traces--hl-move (flag &optional _arg)
-  "Show a visual preview for :move based on FLAG."
-  (evil-traces--hl-mover flag
-                         'evil-traces-move-range
-                         'evil-traces-move-range
-                         'evil-traces-move-preview
-                         'evil-traces-move-preview))
+(evil-traces-deftype evil-traces-move
+    (lambda (flag &optional arg)
+      (evil-traces--hl-mover flag
+                             arg
+                             'evil-traces-move-range
+                             'evil-traces-move-range
+                             'evil-traces-move-preview
+                             'evil-traces-move-preview)))
 
-(evil-ex-define-argument-type evil-traces-move
-  :runner evil-traces--hl-move)
-
-(defun evil-traces--hl-copy (flag &optional _arg)
-  "Show a visual preview for :copy based on FLAG."
-  (evil-traces--hl-mover flag
-                         'evil-traces-copy-range
-                         'evil-traces-copy-range
-                         'evil-traces-copy-preview
-                         'evil-traces-copy-preview))
-
-(evil-ex-define-argument-type evil-traces-copy
-  :runner evil-traces--hl-copy)
+(evil-traces-deftype evil-traces-copy
+    (lambda (flag &optional arg)
+      (evil-traces--hl-mover flag
+                             arg
+                             'evil-traces-copy-range
+                             'evil-traces-copy-range
+                             'evil-traces-copy-preview
+                             'evil-traces-copy-preview)))
 
 ;; ** Global
 (defvar evil-traces--last-global-params nil
@@ -529,53 +504,42 @@ highlights."
                           (re-search-forward pattern (point-at-eol) t))
                    collect (cons (match-beginning 0) (match-end 0))))))))
 
-(defun evil-traces--update-global ()
-  "Highlight :global's range and every visible match of its pattern."
-  (evil-traces--with-possible-suspend
-      (with-current-buffer evil-ex-current-buffer
-        (condition-case error-info
-            (let* ((range (or evil-ex-range (evil-ex-full-range)))
-                   (beg (evil-range-beginning range))
-                   (end (evil-range-end range))
-                   ;; don't use last pattern if argument is nil or "/"
-                   (pattern (and (> (length evil-ex-argument) 1)
-                                 (cl-first (evil-ex-parse-global evil-ex-argument))))
-                   (params (list pattern range)))
-              (unless (equal evil-traces--last-global-params params)
-                (evil-traces--set-hl 'evil-traces-global-range
-                                     (cons beg end)
-                                     'face
-                                     'evil-traces-global-range)
-                (evil-traces--set-hl 'evil-traces-global-matches
-                                     (evil-traces--global-matches pattern beg end)
-                                     'face
-                                     'evil-traces-global-match)
-                (setq evil-traces--last-global-params params)))
-          (user-error
-           (evil-traces--echo (cl-second error-info)))
-          (invalid-regexp
-           (evil-traces--echo (cl-second error-info)))))
-    (progn
-      (evil-traces--delete-hl 'evil-traces-global-range)
-      (evil-traces--delete-hl 'evil-traces-global-matches))
-    (setq evil-traces--last-global-params nil)))
-
-(defun evil-traces--hl-global (flag &optional _arg)
+(defun evil-traces--hl-global (flag &optional arg)
   "Highlight :global's range and every visible match of its pattern.
-FLAG is one of 'start, 'update, or 'stop and signals what to do."
+FLAG is one of 'start, 'update, or 'stop and signals what to do.
+ARG is :global's ex argument."
   (cl-case flag
     (start
-     (evil-traces--reset-state)
      (setq evil-traces--last-global-params nil))
     (update
-     (evil-traces--run-timer #'evil-traces--update-global))
+     (condition-case error-info
+         (with-current-buffer evil-ex-current-buffer
+           (let* ((range (or evil-ex-range (evil-ex-full-range)))
+                  (beg (evil-range-beginning range))
+                  (end (evil-range-end range))
+                  ;; don't use last pattern if argument is nil or "/"
+                  (pattern (and (> (length arg) 1)
+                                (cl-first (evil-ex-parse-global arg))))
+                  (params (list pattern range)))
+             (unless (equal evil-traces--last-global-params params)
+               (evil-traces--set-hl 'evil-traces-global-range
+                                    (cons beg end)
+                                    'face
+                                    'evil-traces-global-range)
+               (evil-traces--set-hl 'evil-traces-global-matches
+                                    (evil-traces--global-matches pattern beg end)
+                                    'face
+                                    'evil-traces-global-match)
+               (setq evil-traces--last-global-params params))))
+       (user-error
+        (evil-traces--echo (cl-second error-info)))
+       (invalid-regexp
+        (evil-traces--echo (cl-second error-info)))))
     (stop
-     (evil-traces--cancel-timer)
      (evil-traces--delete-hl 'evil-traces-global-range)
      (evil-traces--delete-hl 'evil-traces-global-matches))))
 
-(evil-ex-define-argument-type evil-traces-global
-  :runner evil-traces--hl-global)
+(evil-traces-deftype evil-traces-global evil-traces--hl-global)
 
 ;; ** Join
 (defun evil-traces--join-indicator-positions (beg end)
@@ -614,104 +578,83 @@ OUT-POSITIONS are positions outside the current ex range."
                                           'face
                                           'evil-traces-join-indicator)))))))
 
-(defun evil-traces--update-join ()
-  "Highlight :join's range and add indicators for its lines."
-  (evil-traces--with-possible-suspend
-      (with-current-buffer evil-ex-current-buffer
-        (let* ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line))))
-               (beg (evil-range-beginning range))
-               (end (evil-range-end range)))
-          (evil-traces--set-hl
-           'evil-traces-join-range (cons beg end) 'face 'evil-traces-join-range)
-          (cond
-           ((not evil-ex-argument)
-            (evil-traces--place-join-indicators
-             (evil-traces--join-indicator-positions beg end)))
-           ((string-match-p "^[1-9][0-9]*$" evil-ex-argument)
-            (let ((indicator-positions
-                   (save-excursion
-                     (goto-char end)
-                     (evil-traces--join-indicator-positions
-                      (point-at-bol 0)
-                      (point-at-bol (string-to-number evil-ex-argument))))))
-              (evil-traces--place-join-indicators (list (pop indicator-positions))
-                                                  indicator-positions)))
-           (t
-            (evil-traces--echo "Invalid count")))))
-    (progn
-      (evil-traces--delete-hl 'evil-traces-join-range)
-      (evil-traces--delete-hl 'evil-traces-join-in-indicators)
-      (evil-traces--delete-hl 'evil-traces-join-out-indicators))))
-
-(defun evil-traces--hl-join (flag &optional _arg)
+(defun evil-traces--hl-join (flag &optional arg)
   "Highlight the range covered by a :join command.
-FLAG indicates whether to update or stop highlights."
+FLAG is one of 'start, 'update, or 'stop and signals what to do.
+ARG is :join's ex argument."
   (cl-case flag
-    (start
-     (evil-traces--reset-state))
     (update
-     (evil-traces--run-timer #'evil-traces--update-join))
+     (with-current-buffer evil-ex-current-buffer
+       (let* ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line))))
+              (beg (evil-range-beginning range))
+              (end (evil-range-end range)))
+         (evil-traces--set-hl
+          'evil-traces-join-range (cons beg end) 'face 'evil-traces-join-range)
+         (cond
+          ((not arg)
+           (evil-traces--place-join-indicators
+            (evil-traces--join-indicator-positions beg end)))
+          ((string-match-p "^[1-9][0-9]*$" arg)
+           (let ((indicator-positions
+                  (save-excursion
+                    (goto-char end)
+                    (evil-traces--join-indicator-positions
+                     (point-at-bol 0)
+                     (point-at-bol (string-to-number arg))))))
+             (evil-traces--place-join-indicators (list (pop indicator-positions))
+                                                 indicator-positions)))
+          (t
+           (evil-traces--echo "Invalid count"))))))
     (stop
-     (evil-traces--cancel-timer)
      (evil-traces--delete-hl 'evil-traces-join-range)
      (evil-traces--delete-hl 'evil-traces-join-in-indicators)
      (evil-traces--delete-hl 'evil-traces-join-out-indicators))))
 
-(evil-ex-define-argument-type evil-traces-join
-  :runner evil-traces--hl-join)
+(evil-traces-deftype evil-traces-join evil-traces--hl-join)
 
 ;; ** Sort
 (defun evil-traces--sort-option-p (option)
   "Check if OPTION is a valid :sort option."
   (memq option '(?i ?u)))
 
-(defun evil-traces--update-sort ()
-  "Preview :sort's results."
-  (evil-traces--with-possible-suspend
-      (with-current-buffer evil-ex-current-buffer
-        (cond
-         ((and evil-ex-argument
-               (cl-notevery #'evil-traces--sort-option-p
-                            (string-to-list evil-ex-argument)))
-          (evil-traces--echo "Invalid option"))
-         ((not evil-ex-range)
-          (evil-traces--set-hl 'evil-traces-sort nil))
-         (t
-          (let* ((beg (evil-range-beginning evil-ex-range))
-                 (end (evil-range-end evil-ex-range))
-                 (lines (buffer-substring beg end))
-                 (sorted-lines (with-temp-buffer
-                                 (insert lines)
-                                 ;; hide "Reordering buffer... Done"
-                                 (let ((inhibit-message t))
-                                   (evil-ex-sort (point-min)
-                                                 (point-max)
-                                                 evil-ex-argument
-                                                 evil-ex-bang))
-                                 (buffer-string))))
-            (evil-traces--set-hl 'evil-traces-sort
-                                 (cons beg end)
-                                 'face
-                                 'evil-traces-sort
-                                 'display
-                                 sorted-lines)))))
-    (evil-traces--delete-hl 'evil-traces-sort)))
-
-(defun evil-traces--hl-sort (flag &optional _arg)
+(defun evil-traces--hl-sort (flag &optional arg)
   "Preview the results of :sort.
-FLAG indicates whether to update or stop highlights.  If the variable
-`evil-ex-range' is nil, no preview is shown."
+FLAG is one of 'start, 'update, or 'stop and signals what to do, while ARG is
+:sort's ex argument.  If the variable `evil-ex-range' is nil, no preview is
+shown."
   (cl-case flag
-    (start
-     (evil-traces--reset-state))
     (update
-     (evil-traces--run-timer #'evil-traces--update-sort))
+     (with-current-buffer evil-ex-current-buffer
+       (cond
+        ((and arg
+              (cl-notevery #'evil-traces--sort-option-p
+                           (string-to-list arg)))
+         (evil-traces--echo "Invalid option"))
+        ((not evil-ex-range)
+         (evil-traces--set-hl 'evil-traces-sort nil))
+        (t
+         (let* ((beg (evil-range-beginning evil-ex-range))
+                (end (evil-range-end evil-ex-range))
+                (lines (buffer-substring beg end))
+                (sorted-lines (with-temp-buffer
+                                (insert lines)
+                                ;; hide "Reordering buffer... Done"
+                                (let ((inhibit-message t))
+                                  (evil-ex-sort (point-min)
+                                                (point-max)
+                                                arg
+                                                evil-ex-bang))
+                                (buffer-string))))
+           (evil-traces--set-hl 'evil-traces-sort
+                                (cons beg end)
+                                'face
+                                'evil-traces-sort
+                                'display
+                                sorted-lines))))))
     (stop
-     (evil-traces--cancel-timer)
      (evil-traces--delete-hl 'evil-traces-sort))))
 
-(evil-ex-define-argument-type evil-traces-sort
-  :runner evil-traces--hl-sort)
+(evil-traces-deftype evil-traces-sort evil-traces--hl-sort)
 
 ;; ** Substitute
 (defun evil-traces--evil-substitute-runner (flag &optional arg)
@@ -720,39 +663,28 @@ FLAG indicates whether to update or stop highlights.  If the variable
                       (alist-get 'substitution evil-ex-argument-types))))
     (funcall runner flag arg)))
 
-(defun evil-traces--update-substitute ()
-  "Preview :substitute's results."
-  (evil-traces--with-possible-suspend
-      (with-current-buffer evil-ex-current-buffer
-        (let ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line)))))
-          (evil-traces--set-hl 'evil-traces-substitute-range
-                               (cons (evil-range-beginning range)
-                                     (evil-range-end range))
-                               'face
-                               'evil-traces-substitute-range))
-        (let ((evil-ex-hl-update-delay 0))
-          (evil-traces--evil-substitute-runner 'update evil-ex-argument)))
-    (progn
-      (evil-traces--evil-substitute-runner 'stop)
-      (evil-traces--delete-hl 'evil-traces-substitute-range))
-    (evil-traces--evil-substitute-runner 'start evil-ex-argument)))
-
-(defun evil-traces--hl-substitute (flag &optional _arg)
+(defun evil-traces--hl-substitute (flag &optional arg)
   "Preview the :substitute command.
-FLAG indicates whether to start, update, or stop previews."
+FLAG is one of 'start, 'update, or 'stop and signals what to do.
+ARG is :substitute's ex argument."
   (cl-case flag
     (start
-     (evil-traces--reset-state)
-     (evil-traces--evil-substitute-runner 'start evil-ex-argument))
+     (evil-traces--evil-substitute-runner 'start arg))
     (update
-     (evil-traces--run-timer #'evil-traces--update-substitute))
+     (with-current-buffer evil-ex-current-buffer
+       (let ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line)))))
+         (evil-traces--set-hl 'evil-traces-substitute-range
+                              (cons (evil-range-beginning range)
+                                    (evil-range-end range))
+                              'face
+                              'evil-traces-substitute-range))
+       (let ((evil-ex-hl-update-delay 0))
+         (evil-traces--evil-substitute-runner 'update arg))))
     (stop
-     (evil-traces--cancel-timer)
-     (evil-traces--evil-substitute-runner 'stop)
+     (evil-traces--evil-substitute-runner 'stop arg)
      (evil-traces--delete-hl 'evil-traces-substitute-range))))
 
-(evil-ex-define-argument-type evil-traces-substitute
-  :runner evil-traces--hl-substitute)
+(evil-traces-deftype evil-traces-substitute evil-traces--hl-substitute)
 
 ;; * Minor Mode
 (defvar evil-traces--old-argument-types-alist nil

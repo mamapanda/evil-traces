@@ -124,7 +124,7 @@ Currently, these commands are:
    #+END_SRC
 
    If you want to add your own argument type, take a look at
-   ~evil-ex-define-argument-type~ and its ~:runner~ keyword.
+   ~evil-traces-deftype~.
 
 * Sample GIFs
   ~:delete~
