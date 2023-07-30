@@ -40,10 +40,6 @@
 ;;   entry in `evil-traces--highlights' and make things more
 ;;   predictable for testing.  If clearing due to a suspension or
 ;;   stop, then just use `evil-traces--delete-hl'.
-;; - After calling a runner with 'start, `evil-ex-update' will
-;;   immediately call it with 'update, so there's no need to set
-;;   highlights in the 'start case like evil's :substitute runner
-;;   does.
 
 ;; * Setup
 (require 'cl-lib)
@@ -377,7 +373,7 @@ FLAG is the typical `evil-ex' argument runner flag.
 The highlight will be named HL-NAME and use HL-FACE.
 DEFAULT-RANGE may be either 'line or 'buffer."
   (cl-case flag
-    (update
+    ((start update)
      (with-current-buffer evil-ex-current-buffer
        (if-let ((range (or evil-ex-range
                            (cl-case default-range
@@ -449,7 +445,7 @@ RANGE-HL-NAME, RANGE-HL-FACE, PREVIEW-HL-NAME, PREVIEW-HL-FACE are the
 names and faces to use for the command's range and preview
 highlights."
   (cl-case flag
-    (update
+    ((start update)
      (with-current-buffer evil-ex-current-buffer
        (let* ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line))))
               (beg (evil-range-beginning range))
@@ -506,9 +502,9 @@ highlights."
 FLAG is one of 'start, 'update, or 'stop and signals what to do.
 ARG is :global's ex argument."
   (cl-case flag
-    (start
-     (setq evil-traces--last-global-params nil))
-    (update
+    ((start update)
+     (when (eq flag 'start)
+       (setq evil-traces--last-global-params nil))
      (condition-case error-info
          (with-current-buffer evil-ex-current-buffer
            (let* ((range (or evil-ex-range (evil-ex-full-range)))
@@ -580,7 +576,7 @@ OUT-POSITIONS are positions outside the current ex range."
 FLAG is one of 'start, 'update, or 'stop and signals what to do.
 ARG is :join's ex argument."
   (cl-case flag
-    (update
+    ((start update)
      (with-current-buffer evil-ex-current-buffer
        (let* ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line))))
               (beg (evil-range-beginning range))
@@ -620,7 +616,7 @@ FLAG is one of 'start, 'update, or 'stop and signals what to do, while ARG is
 :sort's ex argument.  If the variable `evil-ex-range' is nil, no preview is
 shown."
   (cl-case flag
-    (update
+    ((start update)
      (with-current-buffer evil-ex-current-buffer
        (cond
         ((and arg
@@ -665,9 +661,7 @@ shown."
 FLAG is one of 'start, 'update, or 'stop and signals what to do.
 ARG is :substitute's ex argument."
   (cl-case flag
-    (start
-     (evil-traces--evil-substitute-runner 'start arg))
-    (update
+    ((start update)
      (with-current-buffer evil-ex-current-buffer
        (let ((range (or evil-ex-range (evil-ex-range (evil-ex-current-line)))))
          (evil-traces--set-hl 'evil-traces-substitute-range
@@ -676,7 +670,7 @@ ARG is :substitute's ex argument."
                               'face
                               'evil-traces-substitute-range))
        (let ((evil-ex-hl-update-delay 0))
-         (evil-traces--evil-substitute-runner 'update arg))))
+         (evil-traces--evil-substitute-runner flag arg))))
     (stop
      (evil-traces--evil-substitute-runner 'stop arg)
      (evil-traces--delete-hl 'evil-traces-substitute-range))))
