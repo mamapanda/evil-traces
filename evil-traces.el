@@ -263,13 +263,12 @@ RESUME-FORM will be executed every time a suspend ends."
 (defvar evil-traces--timer nil
   "The timer for evil-traces updates.")
 
-(defun evil-traces--run-with-ex-values (range cmd bang arg buffer fn &rest args)
+(defun evil-traces--run-with-ex-values (range bang arg buffer fn &rest args)
   "Run a function with certain `evil-ex' variables set to specified values.
 RANGE, CMD, BANG, ARG, and BUFFER will be the values of the
 corresponding `evil-ex' variables.  FN is the function to run, and
 ARGS is its argument list."
   (let ((evil-ex-range range)
-        (evil-ex-cmd cmd)
         (evil-ex-bang bang)
         (evil-ex-argument arg)
         (evil-ex-current-buffer buffer))
@@ -278,9 +277,8 @@ ARGS is its argument list."
 (defun evil-traces--run-timer (fn &rest args)
   "Use evil-traces' timer to run FN with ARGS.
 If the timer is currently running, then it is canceled first.  The
-variables `evil-ex-range', `evil-ex-cmd', `evil-ex-bang',
-`evil-ex-argument', and `evil-ex-current-buffer' will be preserved
-automatically."
+variables `evil-ex-range', `evil-ex-bang', `evil-ex-argument', and
+`evil-ex-current-buffer' will be preserved automatically."
   (when evil-traces--timer
     (cancel-timer evil-traces--timer))
   (setq evil-traces--timer
@@ -289,7 +287,6 @@ automatically."
                nil
                #'evil-traces--run-with-ex-values
                evil-ex-range
-               evil-ex-cmd
                evil-ex-bang
                evil-ex-argument
                evil-ex-current-buffer
