@@ -411,7 +411,8 @@ DEFAULT-RANGE may be either 'line or 'buffer."
 ;; ** Move / Copy
 (defun evil-traces--parse-move (arg)
   "Parse ARG into the position where :move will place its text."
-  (let ((parsed-arg (evil-ex-parse arg)))
+  ;; no idea why ``evil-ex-parse' might move the cursor on the first execution
+  (let ((parsed-arg (save-excursion (evil-ex-parse arg))))
     (when (eq (cl-first parsed-arg) 'evil-goto-line)
       (let* ((address (eval (cl-second parsed-arg))))
         (save-excursion
