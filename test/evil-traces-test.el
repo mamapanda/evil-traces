@@ -80,7 +80,7 @@ This function returns `point-min' and `point-max' as the sole window range."
              ((symbol-function 'evil-traces--window-ranges) #'evil-traces--buffer-limits))
      ,@body))
 
-(evil-traces-mode)
+(evil-traces-mode 1)
 
 (ert-deftest evil-traces-test-simple ()
   "Test simple highlighting."
@@ -297,7 +297,7 @@ This function returns `point-min' and `point-max' as the sole window range."
             (evil-traces-join-out-indicators . ((12 12 after-string "  <<<")))))
          [return])
         (evil-traces--should-have-hls nil)
-        "no\nno\nno no[ ]no\nno\n")))
+        "no\nno\n[n]o no no\nno\n")))
   (ert-info ("Range and count given")
     (evil-traces--with-test-env
       (evil-test-buffer
@@ -309,7 +309,7 @@ This function returns `point-min' and `point-max' as the sole window range."
             (evil-traces-join-out-indicators . ((12 12 after-string "  <<<")))))
          [return])
         (evil-traces--should-have-hls nil)
-        "no\nno\nno no[ ]no\nno\n")))
+        "[n]o\nno\nno no no\nno\n")))
   (ert-info ("Suspend Highlighting")
     (evil-traces--with-test-env
       (let ((evil-traces-suspend-function #'evil-traces--no-range-and-arg-p))
@@ -329,7 +329,7 @@ This function returns `point-min' and `point-max' as the sole window range."
               (evil-traces-join-out-indicators . ((12 12 after-string "  <<<")))))
            [return])
           (evil-traces--should-have-hls nil)
-          "no\nno\nno no[ ]no\nno\n")))))
+          "[n]o\nno\nno no no\nno\n")))))
 
 (ert-deftest evil-traces-test-sort ()
   "Test highlighting :sort."
