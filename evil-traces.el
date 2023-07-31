@@ -40,10 +40,6 @@
 ;;   entry in `evil-traces--highlights' and make things more
 ;;   predictable for testing.  If clearing due to a suspension or
 ;;   stop, then just use `evil-traces--delete-hl'.
-;; - After calling a runner with 'start, `evil-ex-update' will
-;;   immediately call it with 'update, so there's no need to set
-;;   highlights in the 'start case like evil's :substitute runner
-;;   does.
 
 ;; * Setup
 (require 'cl-lib)
@@ -363,7 +359,8 @@ highlight delays and suspension."
              (cl-case ,flag
                (start
                 (evil-traces--reset-state)
-                (funcall ,runner-var 'start ,arg))
+                (funcall ,runner-var 'start ,arg)
+                (evil-traces--run-timer #'evil-traces--update-or-suspend ,runner-var ,arg))
                (update
                 (evil-traces--run-timer #'evil-traces--update-or-suspend ,runner-var ,arg))
                (stop
