@@ -672,9 +672,14 @@ ARG is :substitute's ex argument."
                               (cons (evil-range-beginning range)
                                     (evil-range-end range))
                               'face
-                              'evil-traces-substitute-range))
-       (let ((evil-ex-hl-update-delay 0))
-         (evil-traces--evil-substitute-runner 'update arg))))
+                              'evil-traces-substitute-range)))
+     ;; In evil commit 02004bce6884619e687654d333b75c90f8fc27d0,
+     ;; `evil-ex-current-buffer' (now obsolete alias for
+     ;; `evil-ex-original-buffer') became a (mini)buffer-local variable, so we
+     ;; shouldn't wrap the original substitute runner inside
+     ;; `with-current-buffer'.
+     (let ((evil-ex-hl-update-delay 0))
+       (evil-traces--evil-substitute-runner 'update arg)))
     (stop
      (evil-traces--evil-substitute-runner 'stop arg)
      (evil-traces--delete-hl 'evil-traces-substitute-range))))
